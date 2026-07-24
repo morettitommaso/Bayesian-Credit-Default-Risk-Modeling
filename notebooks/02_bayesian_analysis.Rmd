@@ -1,0 +1,57 @@
+# Librerie 
+
+```{r}
+library(cmdstanr)
+library(posterior)
+library(bayesplot)
+library(pROC)
+library(tidyverse)
+library(PRROC)
+```
+
+```{r}
+X_train <- readRDS("data/processed/X_train.rds")
+X_test  <- readRDS("data/processed/X_test.rds")
+y_train <- readRDS("data/processed/y_train.rds")
+y_test  <- readRDS("data/processed/y_test.rds")
+
+means <- readRDS("data/processed/means.rds")
+sds   <- readRDS("data/processed/sds.rds")
+```
+
+```{r}
+data_stan = list(
+  N = nrow(X_train),
+  K = ncol(X_train),
+  X = X_train,
+  y = y_train
+)
+```
+
+```{r}
+X_train <- as.matrix(sapply(as.data.frame(X_train), as.numeric))
+storage.mode(X_train) <- "double"
+
+X_test <- as.matrix(sapply(as.data.frame(X_test), as.numeric))
+storage.mode(X_test) <- "double"
+```
+
+# Stan model Fit
+
+# MCMC Diagnostic
+
+# Posterior Draw Extraction
+
+# Posterior Predictive Chec (PPC)
+
+# Bayesian Prediction
+
+# Cost-Sensitive Threshold Tuning
+
+# Test Set Prediction
+
+# Model evaluation
+
+- PR
+- PA
+- ROC
