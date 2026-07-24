@@ -1,6 +1,6 @@
 # Bayesian Logistic Modeling in Stan
 
-### Librerie 
+### Librerie e dati
 
 ```{r}
 library(cmdstanr)
