@@ -5,10 +5,10 @@ library(knitr)
 
 ```{r}
 res_freq <- readRDS("data/processed/metrics_frequentist.rds") 
-res_1s <- readRDS("data/processed/metrics_1stage.rds")      
+res_1s_lasso <- readRDS("data/processed/metrics_1stage_lasso.rds")      
 res_2s <- readRDS("data/processed/metrics_2stage.rds") 
 
-final_table <- bind_rows(res_freq, res_1s, res_2s)
+final_table <- bind_rows(res_freq, res_1s_lasso, res_2s)
 
 kable(final_table, caption = "Confronto Definitivo dei Modelli su Test Set")
 ```

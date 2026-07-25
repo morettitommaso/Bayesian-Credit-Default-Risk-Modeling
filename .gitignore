@@ -1,1 +1,5 @@
 stan/compiled/two_stage_logit.rds
+
+report/render.R
+report/Bayesian_Credit_Report.Rmd
+report/Bayesian_Credit_Report.pdf

@@ -11,9 +11,9 @@ parameters {
 }
 
 model {
-  // Weakly Informative Priors (Gelman et al.)
+
   alpha ~ normal(0, 5); 
-  beta ~ normal(0, 2.5); 
+  beta ~ double_exponential(0, 1);  // Laplace
   
   // Likelihood
   y ~ bernoulli_logit_glm(X, alpha, beta);

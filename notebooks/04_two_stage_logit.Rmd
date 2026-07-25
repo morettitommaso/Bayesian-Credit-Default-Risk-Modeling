@@ -260,6 +260,19 @@ mcmc_trace(
 )
 ```
 
+```{r}
+library(bayesplot)
+library(ggplot2)
+
+p_trace <- mcmc_trace(
+  fit_stage2$draws(c("alpha", "w[1]", "w[2]", "w[3]")),
+  facet_args = list(ncol = 1) # Mette i grafici uno sotto l'altro
+) + theme_minimal()
+
+# Aumenta l'altezza (height) per dare respiro ai singoli pannelli!
+ggsave("figures/traceplot.png", p_trace, width = 7, height = 6, dpi = 300)
+```
+
 # Posterior Draw Extraction
 
 ```{r}

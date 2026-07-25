@@ -45,7 +45,7 @@ storage.mode(X_test) <- "double"
 ```{r}
 #| eval: false 
 
-mod = cmdstan_model("stan/logit_model.stan")
+mod = cmdstan_model("stan/logit_model_lasso.stan")
 
 fit = mod$sample(
   data = data_stan,
@@ -57,13 +57,13 @@ fit = mod$sample(
 )
 
 # save the model
-fit$save_object("stan/compiled/fitted_logit.rds")
+fit$save_object("stan/compiled/fitted_logit_lasso.rds")
 ```
 
 importa il modello già allenato
 
 ```{r}
-fit = readRDS("stan/compiled/fitted_logit.rds")
+fit = readRDS("stan/compiled/fitted_logit_lasso.rds")
 ```
 
 ### MCMC Diagnostic
@@ -221,7 +221,7 @@ evaluate_predictions <- function(y_true, p_hat, threshold, label) {
   test_cost <- (cost_fp * FP) + (cost_fn * FN)
   
   tibble(
-    Modello = "One-Stage Bayesian",
+    Modello = "Bayesian Lasso",
     Metodo = label,
     Soglia = round(threshold, 4),
     Accuracy = round(acc, 4),
@@ -239,5 +239,5 @@ res_1s_youden <- evaluate_predictions(y_test, p_hat_test, thr_youden, "Youden In
 res_1s_cost   <- evaluate_predictions(y_test, p_hat_test, thr_cost, "Cost-Sensitive (1:10)")
 
 # salva resultati finali Out-of-Sample
-saveRDS(bind_rows(res_1s_youden, res_1s_cost), "data/processed/metrics_1stage.rds")
+saveRDS(bind_rows(res_1s_youden, res_1s_cost), "data/processed/metrics_1stage_lasso.rds")
 ```
