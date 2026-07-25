@@ -1,0 +1,118 @@
+# Frequentist Logistic Modeling
+
+### Librerie e dati
+
+```{r}
+library(pROC)
+library(yardstick)
+library(dplyr)
+```
+
+```{r}
+X_train <- readRDS("data/processed/X_train.rds")
+X_test <- readRDS("data/processed/X_test.rds")
+y_train <- readRDS("data/processed/y_train.rds")
+y_test  <- readRDS("data/processed/y_test.rds")
+
+means <- readRDS("data/processed/means.rds")
+sds <- readRDS("data/processed/sds.rds")
+```
+
+
+# Stima Del Modello (ML)
+
+```{r}
+df_train <- as.data.frame(X_train)
+df_train$y <- y_train
+
+fit_frequentist <- glm(y ~ ., data = df_train, family = binomial(link = "logit"))
+
+# Summary dei coefficienti e p-values
+summary(fit_frequentist)
+```
+
+
+# Prediction su Rrain e Validation (ROC / PR-AUC)
+
+```{r}
+# Probabilità stimate in-sample (MLE point estimates)
+p_hat_train_freq <- predict(fit_frequentist, newdata = df_train, type = "response")
+
+# 1. ROC Curve & AUC
+roc_train_freq <- roc(y_train, p_hat_train_freq)
+auc_roc_freq   <- auc(roc_train_freq)
+
+# 2. Precision-Recall Curve & PR-AUC
+df_pr_train_freq <- tibble(
+  truth = factor(y_train, levels = c(1, 0)),
+  estimate = p_hat_train_freq
+)
+pr_auc_freq <- pr_auc(df_pr_train_freq, truth, estimate)$.estimate
+
+cat("ROC-AUC :", round(auc_roc_freq, 4), "\n")
+cat("PR-AUC  :", round(pr_auc_freq, 4), "\n\n")
+```
+
+
+# Threshold Tuning, Youden VS Cost-Sensitive
+
+```{r}
+# Youden Index
+thr_youden_freq <- coords(roc_train_freq, "best", ret = "threshold")[[1]]
+
+# Cost-Sensitive (Rapporto FN:FP = 10:1)
+cost_fp <- 1
+cost_fn <- 10
+
+coord_all <- coords(roc_train_freq, "all", ret = c("threshold", "sensitivity", "specificity"))
+N_0 <- sum(y_train == 0)
+N_1 <- sum(y_train == 1)
+
+fpr <- 1 - coord_all$specificity
+fnr <- 1 - coord_all$sensitivity
+total_cost <- (cost_fp * fpr * N_0) + (cost_fn * fnr * N_1)
+
+thr_cost_freq <- coord_all$threshold[which.min(total_cost)]
+
+cat("Soglia Youden Index      :", round(thr_youden_freq, 4), "\n")
+cat("Soglia Cost-Sensitive (1:10):", round(thr_cost_freq, 4), "\n\n")
+```
+
+
+# Prediction OUT-OF-SAMPLE (TEST SET) e Evaluation
+
+```{r}
+df_test <- as.data.frame(X_test)
+p_hat_test_freq <- predict(fit_frequentist, newdata = df_test, type = "response")
+
+evaluate_predictions <- function(y_true, p_hat, threshold, label) {
+  y_pred <- ifelse(p_hat > threshold, 1, 0)
+  
+  TP <- sum(y_pred == 1 & y_true == 1)
+  TN <- sum(y_pred == 0 & y_true == 0)
+  FP <- sum(y_pred == 1 & y_true == 0)
+  FN <- sum(y_pred == 0 & y_true == 1)
+  
+  tibble(
+    Modello = "Frequentist",
+    Metodo = label,
+    Soglia = round(threshold, 4),
+    Accuracy = round((TP + TN) / length(y_true), 4),
+    Sensitivity = round(TP / (TP + FN), 4),
+    Specificity = round(TN / (TN + FP), 4),
+    Precision = round(TP / (TP + FP), 4),
+    Costo_Totale = (cost_fp * FP) + (cost_fn * FN)
+  )
+}
+```
+
+```{r}
+# Risultati Out-of-Sample
+res_freq_youden <- evaluate_predictions(y_test, p_hat_test_freq, thr_youden_freq, "Youden Index")
+res_freq_cost   <- evaluate_predictions(y_test, p_hat_test_freq, thr_cost_freq,   "Cost-Sensitive (1:10)")
+
+# salva resultati finali Out-of-Sample
+# saveRDS(p_hat_test_freq, "data/processed/p_hat_test_freq.rds")
+saveRDS(bind_rows(res_freq_youden, res_freq_cost), "data/processed/metrics_frequentist.rds")
+
+```

@@ -1,0 +1,23 @@
+```{r}
+library(dplyr)
+library(knitr)
+```
+
+```{r}
+res_freq <- readRDS("data/processed/metrics_frequentist.rds") 
+res_1s <- readRDS("data/processed/metrics_1stage.rds")      
+res_2s <- readRDS("data/processed/metrics_2stage.rds") 
+
+final_table <- bind_rows(res_freq, res_1s, res_2s)
+
+kable(final_table, caption = "Confronto Definitivo dei Modelli su Test Set")
+```
+
+
+# Discussione dei Risultati
+
+1. Equivalenza di Capacità Discriminativa: Tutti e tre i modelli (Frequentista MLE, Bayesiano a Singolo Stadio e Bayesiano a Due Stadi) registrano prestazioni pressoché equivalenti in termini di separazione del rischio. Il modello Two-Stage non perde potere predittivo rispetto ai modelli completi a 15 variabili, confermando la validità della riduzione dimensionale per domini.
+
+2. Impatto della Soglia Cost-Sensitive (FP=1, FN=10): In un contesto di credit scoring altamente sbilanciato, sia lo Youden Index che l'approccio Cost-Sensitive (1:10) identificano soglie decisionali molto basse ($\approx 0.06 - 0.07$). L'ottimizzazione sui costi finanziari ($FP=1, FN=10$) penalizza ulteriormente i Falsi Negativi, portando la Sensitivity oltre l'85% e garantendo un ulteriore risparmio economico sui costi totali di inottemperanza per la banca.
+
+3. Vantaggio Strategico del Due Stadi: A parità di costi complessivi ($\approx 10.500$ unità di costo su test set) e di metriche di performance, il modello Two-Stage risulta l'approccio vincente dal punto di vista dell'econometria applicata e del Risk Management: sintetizza il profilo del cliente da 15 variabili grezze a 3 soli macro-domini informativi, rendendo la decisione di credito trasparente, interpretabile e conforme ai requisiti regolamentari
