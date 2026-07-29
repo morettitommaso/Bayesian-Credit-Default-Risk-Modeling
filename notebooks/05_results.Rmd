@@ -1,18 +1,111 @@
 ```{r}
 library(dplyr)
 library(knitr)
+library(kableExtra)
+```
+
+loads results
+
+```{r}
+res_freq <- readRDS(
+  "data/processed/metrics_frequentist.rds"
+)
+
+res_1s_lasso <- readRDS(
+  "data/processed/metrics_bayesian_logistic.rds"
+)
+
+res_2s <- readRDS(
+  "data/processed/metrics_two_stage.rds"
+)
+
+
+final_results <- bind_rows(
+  res_freq,
+  res_1s_lasso,
+  res_2s
+)
+```
+
+Discrimination metrics (Test Set)
+
+```{r}
+test_discrimination <- final_results %>%
+  filter(
+    Dataset == "Test"
+  ) %>%
+  select(
+    Model,
+    AUROC,
+    PR_AUC,
+    KS
+  )
+
+
+kable(
+  test_discrimination,
+  digits = 3,
+  caption = "Discriminative Performance on Hold-Out Test Set"
+) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE
+  )
+```
+
+Threshold-based evaluation (Test Set)
+
+```{r}
+test_threshold <- final_results %>%
+  filter(
+    Dataset == "Test_Thresholded"
+  )
+
+
+kable(
+  test_threshold,
+  digits = 3,
+  caption = "Threshold-Based Performance on Hold-Out Test Set"
+) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE
+  )
+```
+
+Training vs Test comparison (overfitting check)
+
+```{r}
+train_test_comparison <- final_results %>%
+  filter(
+    Dataset %in% c("Train", "Test")
+  ) %>%
+  select(
+    Model,
+    Dataset,
+    AUROC,
+    PR_AUC,
+    KS
+  )
+
+
+kable(
+  train_test_comparison,
+  digits = 3,
+  caption = "Train-Test Performance Comparison"
+) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE
+  )
 ```
 
 ```{r}
-res_freq <- readRDS("data/processed/metrics_frequentist.rds") 
-res_1s_lasso <- readRDS("data/processed/metrics_1stage_lasso.rds")      
-res_2s <- readRDS("data/processed/metrics_2stage.rds") 
-
-final_table <- bind_rows(res_freq, res_1s_lasso, res_2s)
-
-kable(final_table, caption = "Confronto Definitivo dei Modelli su Test Set")
+saveRDS(
+  final_results,
+  "data/processed/final_model_comparison.rds"
+)
 ```
-
 
 # Discussione dei Risultati
 

@@ -2,36 +2,36 @@
 
 I vantaggi dell'utilizzare i Two-stage model sono ad esempio:
 
-- Risolve problemi di multicollinearità
-- Valore interpretativo per la banca (lavorare con solamente 3 pesi permette di discutere meglio le decisioni creditizie)
+-   Risolve problemi di multicollinearità
+-   Valore interpretativo per la banca (lavorare con solamente 3 pesi permette di discutere meglio le decisioni creditizie)
 
-## Theory [Kyeong & Shin (2022)]
+## Theory \[Kyeong & Shin (2022)\]
 
 Our 3 domains:
 
-1. Past Delinquency History ($D_1$)
+1.  Past Delinquency History ($D_1$)
 
-- NumberOfTime30-59DaysPastDueNotWorse
-- NumberOfTime60-89DaysPastDueNotWorse
-- NumberOfTimes90DaysLate
-- dp_extreme // Flag anomalie sui ritardi
+-   NumberOfTime30-59DaysPastDueNotWorse
+-   NumberOfTime60-89DaysPastDueNotWorse
+-   NumberOfTimes90DaysLate
+-   dp_extreme // Flag anomalie sui ritardi
 
-2. Financial Capacity & Debt Burden ($D_2$)
+2.  Financial Capacity & Debt Burden ($D_2$)
 
-- logMonthlyIncome
-- IncomeMissing // flag mancanza reddito
-- logDebtRatio
-- RevolvingUtilization_log
-- RevolvingUtilization_extreme
+-   logMonthlyIncome
+-   IncomeMissing // flag mancanza reddito
+-   logDebtRatio
+-   RevolvingUtilization_log
+-   RevolvingUtilization_extreme
 
-3. Demographics & Credit Portfolio ($D_3$)
+3.  Demographics & Credit Portfolio ($D_3$)
 
-- age
-- ageSquared
-- NumberOfDependents
-- DependentsMissing // Flag mancanza NOD
-- NumberRealEstateLoansOrLines
-- CreditLines_log
+-   age
+-   ageSquared
+-   NumberOfDependents
+-   DependentsMissing // Flag mancanza NOD
+-   NumberRealEstateLoansOrLines
+-   CreditLines_log
 
 ## Formulazione Matematica dell'Approccio a Due Stadi
 
@@ -45,7 +45,8 @@ $$
 s_{ki} = f_{ki} + e_{ki}
 $$
 
-La relazione condizionata nell'ambito del blocco informativo $k$ assume una struttura lineare basata sulle aspettative condizionate bayesiane:
+La relazione condizionata nell'ambito del blocco informativo $k$ assume una struttura lineare basata sulle aspettative condizionate bayesiane: 
+
 $$
 \mathbb{E}[Y \mid s_{k1}, \dots, s_{kI_k}] = \mathbb{E}[Y] + \sum_{i=1}^{I_k} w_{ki} s_{ki}
 $$
@@ -58,15 +59,15 @@ $$
 
 Proprietà dei Pesi Informativi ($w_{ki}$):
 
-1. Analogia con le stime OLS: La forma matematica del peso $w_{ki}$ coincide con la stima del coefficiente di una regressione semplice; rappresenta quindi una misura diretta della forza esplicativa del regressore nei confronti della variabile target $Y$.
+1.  Analogia con le stime OLS: La forma matematica del peso $w_{ki}$ coincide con la stima del coefficiente di una regressione semplice; rappresenta quindi una misura diretta della forza esplicativa del regressore nei confronti della variabile target $Y$.
 
-2. Penalizzazione della Varianza (Rumore): Al crescere della varianza residua $\sigma_{ki}^2$ (maggiore presenza di rumore nei dati), il denominatore della formula aumenta, riducendo automaticamente il peso informativo assegnato alla variabile $s_{ki}$ nella costruzione dello score di gruppo.
+2.  Penalizzazione della Varianza (Rumore): Al crescere della varianza residua $\sigma_{ki}^2$ (maggiore presenza di rumore nei dati), il denominatore della formula aumenta, riducendo automaticamente il peso informativo assegnato alla variabile $s_{ki}$ nella costruzione dello score di gruppo.
 
-Da questo stadio si estrae per ogni cliente un variabile sintetica di dominio $\eta_{k}$, ottenuta dalla combinazione lineare delle feature appartenenti a quel blocco e dai rispettivi coefficienti stimati:
+Da questo stadio si estrae per ogni cliente un variabile sintetica di dominio $\eta_{k}$, ottenuta dalla combinazione lineare delle feature appartenenti a quel blocco e dai rispettivi coefficienti stimati: 
+
 $$
 \eta_{k} = \mathbf{X}_k \boldsymbol{\beta}_k
 $$
-
 
 ### Secondo Stadio: Aggregazione dei Domini e Meta-Modello
 
@@ -84,17 +85,15 @@ $$
 p_i = \sigma \left( \alpha + w_1 \eta_{1,i} + w_2 \eta_{2,i} + w_3 \eta_{3,i} \right) = \frac{1}{1 + e^{-(\alpha + w_1 \eta_{1,i} + w_2 \eta_{2,i} + w_3 \eta_{3,i})}}
 $$
 
+In questa formulazione: - $\alpha$ rappresenta l'intercetta globale, che riflette il livello base di log-odds di default del portafoglio complessivo.
 
-In questa formulazione:
-- $\alpha$ rappresenta l'intercetta globale, che riflette il livello base di log-odds di default del portafoglio complessivo.
+-   $\eta_{k,i} = \mathbf{X}_{k,i} \boldsymbol{\beta}_k$ è la combinazione lineare (score di dominio) per l'individuo $i$-esimo nel dominio $k$.
 
-- $\eta_{k,i} = \mathbf{X}_{k,i} \boldsymbol{\beta}_k$ è la combinazione lineare (score di dominio) per l'individuo $i$-esimo nel dominio $k$.
-
-- $w_k$ rappresenta il peso di aggregazione del dominio $k$ (meta-coefficiente), che quantifica l'importanza relativa che il meta-modello attribuisce all'intero settore $k$ nella stima finale del rischio.
+-   $w_k$ rappresenta il peso di aggregazione del dominio $k$ (meta-coefficiente), che quantifica l'importanza relativa che il meta-modello attribuisce all'intero settore $k$ nella stima finale del rischio.
 
 Nel framework bayesiano a due stadi proposto da Kyeong & Shin (2022), la specificazione delle priors per i parametri di secondo stadio svolge un ruolo chiave per garantire stabilità computazionale ed interpretabilità economica:
 
-1. Prior sull'Intercetta ($\alpha$):
+1.  Prior sull'Intercetta ($\alpha$):
 
 $$
 \alpha \sim \mathcal{N}(0, \sigma_{\alpha}^2)
@@ -102,21 +101,21 @@ $$
 
 Assegna una regolarizzazione debole sull'intercetta centrata attorno a log-odds pari a 0 (ovvero probabilità baseline del 50%, lasciando che siano i dati ad aggiustare la reale frequenza di default del portafoglio).
 
-2. Priors sui Pesi di Dominio ($w_k$):
+2.  Priors sui Pesi di Dominio ($w_k$):
 
 $$
 w_k \sim \mathcal{N}^+(1, \sigma_{w}^2) \quad \text{oppure} \quad w_k \sim \text{Log-Normal}(0, \sigma_{w}^2)
 $$
 
-- Vincolo di Positività ($w_k > 0$): Poiché le covariate nei sottomodelli di primo stadio sono orientate in modo che valori più alti di $\eta_k$ indichino un maggior rischio, imporre una prior positiva sui pesi $w_k$ garantisce la monotonia della funzione di decisione. Un peggioramento in un qualsiasi dominio non potrà mai, paradossalmente, ridurre la probabilità di default stimata.
+-   Vincolo di Positività ($w_k > 0$): Poiché le covariate nei sottomodelli di primo stadio sono orientate in modo che valori più alti di $\eta_k$ indichino un maggior rischio, imporre una prior positiva sui pesi $w_k$ garantisce la monotonia della funzione di decisione. Un peggioramento in un qualsiasi dominio non potrà mai, paradossalmente, ridurre la probabilità di default stimata.
 
-- Centratura unitaria ($\mu = 1$): Centrare la prior attorno a $1$ riflette l'ipotesi neutra a priori che tutti i domini informativi selezionati abbiano un impatto paritetico prima dell'osservazione dei dati.
+-   Centratura unitaria ($\mu = 1$): Centrare la prior attorno a $1$ riflette l'ipotesi neutra a priori che tutti i domini informativi selezionati abbiano un impatto paritetico prima dell'osservazione dei dati.
 
 Il secondo stadio fornisce un doppio livello di lettura del rischio particolarmente utile nei contesti bancari e di regolamentazione creditizia:
 
-- Ponderazione Relativa dei Domini ($w_k$): L'analisi della distribuzione a posteriori dei pesi $w_k$ permette alla banca di stabilire gerarchicamente quale macro-area sia più predittiva (es. verificare empiricamente se $w_1 > w_2$, ovvero se la storiografia dei ritardi di pagamento domina la capacità reddituale corrente).
+-   Ponderazione Relativa dei Domini ($w_k$): L'analisi della distribuzione a posteriori dei pesi $w_k$ permette alla banca di stabilire gerarchicamente quale macro-area sia più predittiva (es. verificare empiricamente se $w_1 > w_2$, ovvero se la storiografia dei ritardi di pagamento domina la capacità reddituale corrente).
 
-- Decomposizione del Rischio Individuale: Per ogni singolo cliente, la probabilità finale $p_i$ può essere scomposta nei contributi parziali dei tre domini ($w_1 \eta_{1,i}$, $w_2 \eta_{2,i}$, $w_3 \eta_{3,i}$). Questo rende il modello trasparente e spiegabile (Explainable AI / Credit Scoring), consentendo di motivare chiaramente il rifiuto o l'approvazione di una richiesta di credito sulla base del dominio che ha inciso maggiormente sullo score.
+-   Decomposizione del Rischio Individuale: Per ogni singolo cliente, la probabilità finale $p_i$ può essere scomposta nei contributi parziali dei tre domini ($w_1 \eta_{1,i}$, $w_2 \eta_{2,i}$, $w_3 \eta_{3,i}$). Questo rende il modello trasparente e spiegabile (Explainable AI / Credit Scoring), consentendo di motivare chiaramente il rifiuto o l'approvazione di una richiesta di credito sulla base del dominio che ha inciso maggiormente sullo score.
 
 ```{r}
 library(cmdstanr)
@@ -128,6 +127,11 @@ library(dplyr)
 ```
 
 ```{r}
+source("R/threshold_tuning.R")
+source("R/evaluation_metrics.R")
+```
+
+```{r}
 X_train <- readRDS("data/processed/X_train.rds")
 X_test  <- readRDS("data/processed/X_test.rds")
 y_train <- readRDS("data/processed/y_train.rds")
@@ -135,6 +139,7 @@ y_test  <- readRDS("data/processed/y_test.rds")
 ```
 
 # Ipotizziamo K = 15 covariate divise nei 3 domini di Kyeong & Shin (2022)
+
 # Modifica i range di colonne in base al significato reale delle tue variabili!
 
 ```{r}
@@ -182,6 +187,49 @@ stan_data_2stage <- list(
   X3 = X3_tr,
   y  = y_train
 )
+```
+
+correlazione tra domini
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+X_train_domains <- X_train[, c(vars_domain1, vars_domain2, vars_domain3)]
+corr_matrix <- cor(X_train_domains, use = "complete.obs")
+
+# Heatmap
+corr_df <- expand.grid(Var1 = colnames(corr_matrix), Var2 = colnames(corr_matrix))
+corr_df$value <- as.vector(corr_matrix)
+
+# indici di separazione
+b1 <- length(vars_domain1) + 0.5
+b2 <- length(vars_domain1) + length(vars_domain2) + 0.5
+
+p_corr <- ggplot(corr_df, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "#377EB8", mid = "white", high = "#E41A1C", 
+                       limits = c(-1, 1), name = "Pearson\nCorr") +
+  geom_hline(yintercept = c(b1, b2), color = "black", linewidth = 0.8) +
+  geom_vline(xintercept = c(b1, b2), color = "black", linewidth = 0.8) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_blank()) +
+  ggtitle("A) Correlation matrix")
+
+# Distribuzione dei Valori di Correlazione
+corr_values <- corr_matrix[lower.tri(corr_matrix)]
+df_corr_vals <- data.frame(corr = corr_values)
+
+p_dist <- ggplot(df_corr_vals, aes(x = corr)) +
+  geom_histogram(breaks = seq(-0.5, 1.0, by = 0.1), fill = "black", color = "white") +
+  theme_minimal() +
+  labs(x = "Correlation coefficient", y = "Frequency", 
+       title = "B) Distribution of correlations among variables") +
+  scale_x_continuous(breaks = seq(-0.5, 1.0, by = 0.25))
+
+p_corr + p_dist
 ```
 
 # Primo Stadio: Stima freq/bayesiana dei domini
@@ -237,6 +285,7 @@ importa il modello già allenato
 fit_stage2 = readRDS("stan/compiled/two_stage_logit.rds")
 ```
 
+
 ### MCMC Diagnostic
 
 Summary generale dei parametri principali
@@ -273,12 +322,14 @@ p_trace <- mcmc_trace(
 ggsave("figures/traceplot.png", p_trace, width = 7, height = 6, dpi = 300)
 ```
 
+
 # Posterior Draw Extraction
 
 ```{r}
 # Converte i campioni MCMC in matrice
 draws_s2 = as_draws_matrix(fit_stage2$draws(c("alpha", "w"))) 
 ```
+
 
 # Posterior Predictive Checks
 
@@ -334,8 +385,45 @@ abline(v = prop_real, col = "red", lwd = 2, lty = 2)
 legend("topright", legend = c("Tasso Reale", "Distribuzione PPD"), col = c("red", "lightgreen"), lty = c(2, 1), lwd = c(2, 10))
 ```
 
-
 # Predizione Out-of-Sample (Test Set)
+
+```{r}
+posterior_predict_prob <- function(draws, eta1, eta2, eta3){
+  
+  S <- nrow(draws)
+  N <- length(eta1)
+  
+  p_draws <- matrix(0, S, N)
+  
+  for(s in 1:S){
+    
+    eta <- draws[s,"alpha"] +
+           draws[s,"w[1]"] * eta1 +
+           draws[s,"w[2]"] * eta2 +
+           draws[s,"w[3]"] * eta3
+    
+    p_draws[s,] <- plogis(eta)
+  }
+  
+  return(colMeans(p_draws))
+}
+```
+
+```{r}
+p_hat_train_2s <- posterior_predict_prob(
+  draws_s2,
+  eta1_tr,
+  eta2_tr,
+  eta3_tr
+)
+
+p_hat_test_2s <- posterior_predict_prob(
+  draws_s2,
+  eta1_te,
+  eta2_te,
+  eta3_te
+)
+```
 
 ```{r}
 # Posterior Means
@@ -344,86 +432,86 @@ w1_m <- mean(draws_s2[, "w[1]"])
 w2_m <- mean(draws_s2[, "w[2]"])
 w3_m <- mean(draws_s2[, "w[3]"])
 
-# Probability su Test set
-mu_test <- alpha_m + w1_m * eta1_te + w2_m * eta2_te + w3_m * eta3_te
-p_hat_test_2s <- 1 / (1 + exp(-mu_test))
-
 cat("Pesi posteriori medi dei Domini:\n")
 cat("W1 (Delinquency) :", round(w1_m, 4), "\n")
 cat("W2 (Financial) :", round(w2_m, 4), "\n")
 cat("W3 (Demographics) :", round(w3_m, 4), "\n")
 ```
 
-# Funzione di Valutazione
+
+### Model validation: ROC & Precision-Recall (TRAIN e TEST)
 
 ```{r}
-cost_fp <- 1
-cost_fn <- 10
+train_metrics <- evaluate_classifier(
+  y_train,
+  p_hat_train_2s
+)
+print("Train metrics")
+print(train_metrics)
 
-evaluate_model <- function(y_true, p_hat, thr, label) {
-  y_pred <- ifelse(p_hat > thr, 1, 0)
-  
-  TP <- sum(y_pred == 1 & y_true == 1)
-  TN <- sum(y_pred == 0 & y_true == 0)
-  FP <- sum(y_pred == 1 & y_true == 0)
-  FN <- sum(y_pred == 0 & y_true == 1)
-  
-  roc_obj <- roc(y_true, p_hat, quiet = TRUE)
-  
-  precision_val <- ifelse((TP + FP) > 0, round(TP / (TP + FP), 4), 0)
-  
-  tibble(
-    Modello = "Two-Stage Bayesian",
-    Metodo = label,
-    Soglia = round(thr, 4),
-    # ROC_AUC = round(auc(roc_obj), 4),
-    Accuracy = round((TP + TN) / length(y_true), 4),
-    Sensitivity = round(TP / (TP + FN), 4),
-    Specificity = round(TN / (TN + FP), 4),
-    Precision = precision_val,
-    Costo_Totale = (cost_fp * FP) + (cost_fn * FN)
-  )
-}
+test_metrics <- evaluate_classifier(
+  y_test,
+  p_hat_test_2s
+)
+
+print("Test metrics")
+print(test_metrics)
 ```
 
-# Threshold Tuning sul Training Set
+### Threshold Tuning: Touden VS Cost-Sesitive 
 
 ```{r}
-# Calcolo di mu e p_hat sul TRAIN SET per fare il threshold tuning
-mu_train_2s <- alpha_m + w1_m * eta1_tr + w2_m * eta2_tr + w3_m * eta3_tr
-p_hat_train_2s <- 1 / (1 + exp(-mu_train_2s))
-
-# ROC sul Training Set
-roc_tr_2s <- roc(y_train, as.numeric(p_hat_train_2s), quiet = TRUE)
+roc_train <- pROC::roc(
+  y_train,
+  p_hat_train_2s,
+  quiet = TRUE
+)
 ```
 
-
 ```{r}
-# Youden Index 
-thr_youden_2s <- coords(roc_tr_2s, "best", ret = "threshold")[[1]]
+thr_youden <- youden_threshold(roc_train)
 
-# Cost-Sensitive (Misclassification Cost FP=1, FN=10)
-coord_all_2s <- coords(roc_tr_2s, "all", ret = c("threshold", "sensitivity", "specificity"))
-N_0 <- sum(y_train == 0)
-N_1 <- sum(y_train == 1)
+thr_cost <- cost_sensitive_threshold(
+  roc_train,
+  y_train,
+  cost_fp = 1,
+  cost_fn = 10
+)
 
-fpr_tr <- 1 - coord_all_2s$specificity
-fnr_tr <- 1 - coord_all_2s$sensitivity
-
-total_cost_tr <- (cost_fp * fpr_tr * N_0) + (cost_fn * fnr_tr * N_1)
-thr_cost_2s   <- coord_all_2s$threshold[which.min(total_cost_tr)]
-
-cat("Soglia Youden Index :", round(thr_youden_2s, 4), "\n")
-cat("Soglia Cost-Sensitive (1:10) :", round(thr_cost_2s, 4), "\n\n")
+cat("Soglia Youden Index :", round(thr_youden, 4), "\n")
+cat("Soglia Cost-Sensitive (1:10) :", round(thr_cost, 4), "\n\n")
 ```
 
-# 4. Valutazione Out-of-Sample (Test Set)
+# Model Out-of-Sample Evaluation
 
 ```{r}
-res_2s_youden <- evaluate_model(y_test, p_hat_test_2s, thr_youden_2s, "Youden Index")
-res_2s_cost   <- evaluate_model(y_test, p_hat_test_2s, thr_cost_2s, "Cost-Sensitive (1:10)")
+res_2s_youden <- evaluate_predictions(y_test, p_hat_test_2s, thr_youden, "Bayesian 2-stage", "Youden Index")
+res_2s_cost   <- evaluate_predictions(y_test, p_hat_test_2s, thr_cost, "Bayesian 2-stage", "Cost-Sensitive")
+```
 
-# Salvataggio prediction e metriche
-# saveRDS(p_hat_test_2s, "data/processed/p_hat_test_2stage.rds")
-saveRDS(bind_rows(res_2s_youden, res_2s_cost), "data/processed/metrics_2stage.rds")
+```{r}
+all_metrics_2s <- bind_rows(
+  train_metrics %>%
+    mutate(
+      Dataset = "Train",
+      Model = "Bayesian Two-Stage"
+    ),
+  
+  test_metrics %>%
+    mutate(
+      Dataset = "Test",
+      Model = "Bayesian Two-Stage"
+    ),
+  
+  bind_rows(res_2s_youden, res_2s_cost) %>%
+    mutate(
+      Dataset = "Test_Thresholded",
+      Model = "Bayesian Two-Stage"
+    )
+)
+
+saveRDS(
+  all_metrics_2s,
+  "data/processed/metrics_two_stage.rds"
+)
 ```

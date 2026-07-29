@@ -14,6 +14,11 @@ library(dplyr)
 ```
 
 ```{r}
+source("R/threshold_tuning.R")
+source("R/evaluation_metrics.R")
+```
+
+```{r}
 X_train <- readRDS("data/processed/X_train.rds")
 X_test  <- readRDS("data/processed/X_test.rds")
 y_train <- readRDS("data/processed/y_train.rds")
@@ -24,20 +29,19 @@ sds   <- readRDS("data/processed/sds.rds")
 ```
 
 ```{r}
+X_train <- as.matrix(sapply(as.data.frame(X_train), as.numeric))
+storage.mode(X_train) <- "double"
+
+X_test <- as.matrix(sapply(as.data.frame(X_test), as.numeric))
+storage.mode(X_test) <- "double"
+
+
 data_stan = list(
   N = nrow(X_train),
   K = ncol(X_train),
   X = X_train,
   y = y_train
 )
-```
-
-```{r}
-X_train <- as.matrix(sapply(as.data.frame(X_train), as.numeric))
-storage.mode(X_train) <- "double"
-
-X_test <- as.matrix(sapply(as.data.frame(X_test), as.numeric))
-storage.mode(X_test) <- "double"
 ```
 
 ### Stan model Fit
@@ -140,104 +144,123 @@ abline(v = prop_real, col = "red", lwd = 2)
 ### Bayesian Prediction (TRAIN & TEST)
 
 ```{r}
-# posterior mean
+posterior_predict_prob <- function(alpha_draws, beta_draws, X){
+  
+  S <- length(alpha_draws)
+  N <- nrow(X)
+  
+  p_draws <- matrix(0, S, N)
+  
+  for(s in 1:S){
+    
+    beta_s <- as.numeric(beta_draws[s, ])
+    eta <- alpha_draws[s] + X %*% beta_s
+    p_draws[s,] <- plogis(eta)
+    
+  }
+  
+  colMeans(p_draws)
+}
+```
+
+```{r}
+p_hat_train <- posterior_predict_prob(
+  alpha_draws,
+  beta_draws,
+  X_train
+)
+
+p_hat_test <- posterior_predict_prob(
+  alpha_draws,
+  beta_draws,
+  X_test
+)
+```
+
+```{r}
+# posterior means
 alpha_mean <- mean(alpha_draws)
 beta_mean  <- colMeans(beta_draws)
-
-# Probabilità a posteriori stimate
-p_hat_train <- as.numeric(1 / (1 + exp(-(alpha_mean + X_train %*% beta_mean))))
-p_hat_test  <- as.numeric(1 / (1 + exp(-(alpha_mean + X_test %*% beta_mean))))
 ```
 
 
-### Model validation: ROC & Precision-Recall (TRAIN)
+### Model validation: ROC & Precision-Recall (TRAIN e TEST)
 
 ```{r}
-# 1. ROC Curve & AUC 
-roc_train <- roc(y_train, p_hat_train)
-auc_roc <- auc(roc_train)
+train_metrics <- evaluate_classifier(
+  y_train,
+  p_hat_train
+)
+print("Train metrics")
+print(train_metrics)
 
-# 2. Precision-Recall Curve & PR-AUC 
-df_pr_train <- tibble(
-  truth = factor(y_train, levels = c(1, 0)),
-  estimate = p_hat_train
+test_metrics <- evaluate_classifier(
+  y_test,
+  p_hat_test
 )
 
-pr_auc_val <- pr_auc(df_pr_train, truth, estimate)$.estimate
-
-cat("ROC-AUC :", round(auc_roc, 4), "\n")
-cat("PR-AUC  :", round(pr_auc_val, 4), "\n\n")
+print("Test metrics")
+print(test_metrics)
 ```
 
 
 ### Threshold Tuning: Touden VS Cost-Sesitive 
 
 ```{r}
-# Youden Index
-thr_youden <- coords(roc_train, "best", ret = "threshold")[[1]]
+roc_train <- pROC::roc(
+  y_train,
+  p_hat_train,
+  quiet = TRUE
+)
+```
 
-# Cost-Sensitive Optimization
-# Assegniamo un rapporto di costo asimmetrico: perdere un default (FN) costa 10 volte un falso allarme (FP)
-cost_fp <- 1
-cost_fn <- 10
+```{r}
+thr_youden <- youden_threshold(roc_train)
 
-# Estrariamo la matrice delle performance per ogni possibile soglia
-coord_all <- coords(roc_train, "all", ret = c("threshold", "sensitivity", "specificity"))
+thr_cost <- cost_sensitive_threshold(
+  roc_train,
+  y_train,
+  cost_fp = 1,
+  cost_fn = 10
+)
 
-N_0 <- sum(y_train == 0) # Totale Non-Default
-N_1 <- sum(y_train == 1) # Totale Default
-
-fpr <- 1 - coord_all$specificity
-fnr <- 1 - coord_all$sensitivity
-
-# Calcolo della funzione di perdita (Loss Function)
-total_cost <- (cost_fp * fpr * N_0) + (cost_fn * fnr * N_1)
-
-# Estrazione della soglia che minimizza il costo atteso
-thr_cost <- coord_all$threshold[which.min(total_cost)]
-
-cat("Soglia Ottimale Youden Index      :", round(thr_youden, 4), "\n")
-cat("Soglia Cost-Sensitive (Ratio 1:10):", round(thr_cost, 4), "\n\n")
+cat("Soglia Youden Index :", round(thr_youden, 4), "\n")
+cat("Soglia Cost-Sensitive (1:10) :", round(thr_cost, 4), "\n\n")
 ```
 
 
 ### Model evaluation
 
 ```{r}
-evaluate_predictions <- function(y_true, p_hat, threshold, label) {
-  y_pred <- ifelse(p_hat > threshold, 1, 0)
-  
-  TP <- sum(y_pred == 1 & y_true == 1)
-  TN <- sum(y_pred == 0 & y_true == 0)
-  FP <- sum(y_pred == 1 & y_true == 0)
-  FN <- sum(y_pred == 0 & y_true == 1)
-  
-  acc  <- (TP + TN) / length(y_true)
-  sens <- TP / (TP + FN)  # Recall
-  spec <- TN / (TN + FP)
-  prec <- TP / (TP + FP)
-  
-  # Costo reale sostenuto sul Test Set
-  test_cost <- (cost_fp * FP) + (cost_fn * FN)
-  
-  tibble(
-    Modello = "Bayesian Lasso",
-    Metodo = label,
-    Soglia = round(threshold, 4),
-    Accuracy = round(acc, 4),
-    Sensitivity = round(sens, 4),
-    Specificity = round(spec, 4),
-    Precision = round(prec, 4),
-    Costo_Totale = test_cost
-  )
-}
+# Risultati Out-of-Sample
+res_1s_youden <- evaluate_predictions(y_test, p_hat_test, thr_youden, "Bayesian Lasso", "Youden Index")
+res_1s_cost   <- evaluate_predictions(y_test, p_hat_test, thr_cost, "Bayesian Lasso", "Cost-Sensitive")
 ```
 
 ```{r}
-# Valutazione Out-of-Sample per entrambe le soglie
-res_1s_youden <- evaluate_predictions(y_test, p_hat_test, thr_youden, "Youden Index")
-res_1s_cost   <- evaluate_predictions(y_test, p_hat_test, thr_cost, "Cost-Sensitive (1:10)")
+all_metrics_bayes <- bind_rows(
+  
+  train_metrics %>%
+    mutate(
+      Dataset = "Train",
+      Model = "Bayesian Logistic Lasso"
+    ),
+  
+  test_metrics %>%
+    mutate(
+      Dataset = "Test",
+      Model = "Bayesian Logistic Lasso"
+    ),
+  
+  bind_rows(res_1s_youden, res_1s_cost) %>%
+    mutate(
+      Dataset = "Test_Thresholded",
+      Model = "Bayesian Logistic Lasso"
+    )
+)
 
-# salva resultati finali Out-of-Sample
-saveRDS(bind_rows(res_1s_youden, res_1s_cost), "data/processed/metrics_1stage_lasso.rds")
+saveRDS(
+  all_metrics_bayes,
+  "data/processed/metrics_bayesian_logistic.rds"
+)
 ```
