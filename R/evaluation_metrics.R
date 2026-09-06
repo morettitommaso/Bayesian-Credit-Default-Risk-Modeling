@@ -1,7 +1,4 @@
-# ============================
 # evaluate predictions
-# ============================
-
 evaluate_predictions <- function(
     y_true,
     p_hat,
@@ -48,10 +45,7 @@ evaluate_predictions <- function(
 }
 
 
-# ============================
 # K-S Statistic
-# ============================
-
 calc_ks_stat <- function(y_true, p_hat) {
   
   p_good <- p_hat[y_true == 0]
@@ -68,9 +62,7 @@ calc_ks_stat <- function(y_true, p_hat) {
 }
 
 
-# ============================
 # Complete evaluation
-# ============================
 
 evaluate_classifier <- function(y_true, p_hat) {
   

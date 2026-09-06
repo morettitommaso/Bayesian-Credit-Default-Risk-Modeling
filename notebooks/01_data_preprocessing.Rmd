@@ -485,7 +485,7 @@ plot(X_train[,"NumberOfTimes90DaysLate"], jitter(y_train))
 plot(X_train[,"NumberOfTime60_89DaysPastDueNotWorse"], jitter(y_train))
 ```
 
-Sospetto che i valori 97 e 98 siano errori, anche se fossero stati registrati in periodi di crisi mi sembra strnao ceh non vi siano altri valori elevati (per esempio tra 10 e 90 o tra 90 e 98), penso quindi che possa essere un problema di encoding, probabilmente quei valori erano segnalati come "maggiore di 15" o qualcosa di simile
+Sospetto che i valori 97 e 98 siano errori, anche se fossero stati registrati in periodi di crisi mi sembra strano cge non vi siano altri valori elevati (per esempio tra 10 e 90 o tra 90 e 98), penso quindi che possa essere un problema di encoding, probabilmente quei valori erano segnalati come "maggiore di 15" o qualcosa di simile.
 
 controlliamo se le 3 variabili "NumberOfTime30_59DaysPastDueNotWorse", "NumberOfTimes90DaysLate" e "NumberOfTime60_89DaysPastDueNotWorse" hanno lo stesso problema nelle stesse osservazioni
 
@@ -584,9 +584,9 @@ for (v in late_vars) {
 ```
 
 Il problema più grande è chiaramente la variabile "MonthlyIncome" con circa il 20% di valori mancanti.
-Il sopsetto è che questi siano effettivamente dei valori MNAR (Missing Not At Random) per esempio la non presenza del reddito mensile potrebbe indicare le persone che non hanno lavoro 
+Il sospetto è che questi siano effettivamente dei valori MNAR (Missing Not At Random) per esempio la non presenza del reddito mensile potrebbe indicare le persone che non hanno lavoro.
 
-Il notebook https://www.kaggle.com/code/regivm/data-cleaning-and-eda-tutorial di kaggle presenta un estensivo trattamento dei valori mancanti, per l'obiettivo di questo progetto mi limiterò ad eseguire imputazioni di base sui principali problemi relativi ai valori mancanti
+Il notebook https://www.kaggle.com/code/regivm/data-cleaning-and-eda-tutorial di kaggle presenta un estensivo trattamento dei valori mancanti, per l'obiettivo di questo progetto mi limiterò ad eseguire imputazioni di base.
 
 
 Gestione di "NumberOfDependents"
