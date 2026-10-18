@@ -52,7 +52,7 @@ X_mat = as.matrix(dat[,-c(1,2)])
 y = as.integer(dat$SeriousDlqin2yrs)
 ```
 
-### Train test Split
+### Train Test Val Split
 
 ```{r}
 set.seed(123)
@@ -63,21 +63,48 @@ N = nrow(X_mat)
 idx_pos <- which(y == 1)
 idx_neg <- which(y == 0)
 
-idx_pos_train <- sample(idx_pos, size = 0.8 * length(idx_pos))
-idx_neg_train <- sample(idx_neg, size = 0.8 * length(idx_neg))
+# splitto 60% train, 20% validation, 20% test
+# classe 1
+idx_pos_train <- sample(idx_pos, size = floor(0.6 * length(idx_pos)))
+idx_pos_rem <- setdiff(idx_pos, idx_pos_train)
 
-idx <- c(idx_pos_train, idx_neg_train)
+idx_pos_val <- sample(idx_pos_rem, size = floor(0.5 * length(idx_pos_rem)))
+idx_pos_test <- setdiff(idx_pos_rem, idx_pos_val)
 
-X_train = as.data.frame(X_mat[idx, ])
-y_train = y[idx]
+# classe 0
+idx_neg_train <- sample(idx_neg, size = floor(0.6 * length(idx_neg)))
+idx_neg_rem <- setdiff(idx_neg, idx_neg_train)
 
-X_test = as.data.frame(X_mat[-idx, ])
-y_test = y[-idx]
+idx_neg_val <- sample(idx_neg_rem, size = floor(0.5 * length(idx_neg_rem)))
+idx_neg_test <- setdiff(idx_neg_rem, idx_neg_val)
+
+# unisco le due classi
+idx_train <- c(idx_pos_train, idx_neg_train)
+idx_val   <- c(idx_pos_val, idx_neg_val)
+idx_test  <- c(idx_pos_test, idx_neg_test)
+
+# creo i dataset
+X_train <- as.data.frame(X_mat[idx_train, ])
+y_train <- y[idx_train]
+
+X_val <- as.data.frame(X_mat[idx_val, ])
+y_val <- y[idx_val]
+
+X_test <- as.data.frame(X_mat[idx_test, ])
+y_test <- y[idx_test]
 
 # le proporzioni di default devono essere simili
 cat("Proporzione default - train:", mean(y_train), "\n")
+cat("Proporzione default - validation:", mean(y_val), "\n")
 cat("Proporzione default - test: ", mean(y_test), "\n")
 ```
+
+
+# Trasformazione Box–Tidwell
+
+
+
+# Analisi esplorativa delle singole variabili
 
 ## SeriousDlqin2yrs
 
@@ -566,6 +593,19 @@ for (v in late_vars) {
 ```
 
 
+
+
+
+
+# Diagnostica della multicollinearità
+### COR
+### VIF
+### CI & CN
+### VDP
+
+
+
+
 # Missing values
 
 ```{r}
@@ -723,6 +763,20 @@ X_test[, cols_to_scale] <- scale(X_test[, cols_to_scale],
                                 center = means, 
                                 scale = sds)
 ```
+
+
+
+
+
+# Diagnostica di influenza
+
+### Cook distance
+### DFBETAS
+
+
+
+
+
 
 
 # Saving data

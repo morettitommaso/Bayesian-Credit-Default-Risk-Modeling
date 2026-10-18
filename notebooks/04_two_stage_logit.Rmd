@@ -45,7 +45,7 @@ $$
 s_{ki} = f_{ki} + e_{ki}
 $$
 
-La relazione condizionata nell'ambito del blocco informativo $k$ assume una struttura lineare basata sulle aspettative condizionate bayesiane: 
+La relazione condizionata nell'ambito del blocco informativo $k$ assume una struttura lineare basata sulle aspettative condizionate bayesiane:
 
 $$
 \mathbb{E}[Y \mid s_{k1}, \dots, s_{kI_k}] = \mathbb{E}[Y] + \sum_{i=1}^{I_k} w_{ki} s_{ki}
@@ -63,7 +63,7 @@ Proprietà dei Pesi Informativi ($w_{ki}$):
 
 2.  Penalizzazione della Varianza (Rumore): Al crescere della varianza residua $\sigma_{ki}^2$ (maggiore presenza di rumore nei dati), il denominatore della formula aumenta, riducendo automaticamente il peso informativo assegnato alla variabile $s_{ki}$ nella costruzione dello score di gruppo.
 
-Da questo stadio si estrae per ogni cliente un variabile sintetica di dominio $\eta_{k}$, ottenuta dalla combinazione lineare delle feature appartenenti a quel blocco e dai rispettivi coefficienti stimati: 
+Da questo stadio si estrae per ogni cliente un variabile sintetica di dominio $\eta_{k}$, ottenuta dalla combinazione lineare delle feature appartenenti a quel blocco e dai rispettivi coefficienti stimati:
 
 $$
 \eta_{k} = \mathbf{X}_k \boldsymbol{\beta}_k
@@ -285,7 +285,6 @@ importa il modello già allenato
 fit_stage2 = readRDS("stan/compiled/two_stage_logit.rds")
 ```
 
-
 ### MCMC Diagnostic
 
 Summary generale dei parametri principali
@@ -322,14 +321,12 @@ p_trace <- mcmc_trace(
 ggsave("figures/traceplot.png", p_trace, width = 7, height = 6, dpi = 300)
 ```
 
-
 # Posterior Draw Extraction
 
 ```{r}
 # Converte i campioni MCMC in matrice
 draws_s2 = as_draws_matrix(fit_stage2$draws(c("alpha", "w"))) 
 ```
-
 
 # Posterior Predictive Checks
 
@@ -438,7 +435,6 @@ cat("W2 (Financial) :", round(w2_m, 4), "\n")
 cat("W3 (Demographics) :", round(w3_m, 4), "\n")
 ```
 
-
 ### Model validation: ROC & Precision-Recall (TRAIN e TEST)
 
 ```{r}
@@ -458,7 +454,7 @@ print("Test metrics")
 print(test_metrics)
 ```
 
-### Threshold Tuning: Touden VS Cost-Sesitive 
+### Threshold Tuning: Touden VS Cost-Sesitive
 
 ```{r}
 roc_train <- pROC::roc(
