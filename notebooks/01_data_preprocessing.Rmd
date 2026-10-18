@@ -1,11 +1,30 @@
 # Bayesian Credit Default Risk modeling - EDA & Pre-processing
 
+the notebook is devided into 9 sections:
+
+1. IMPORT LIBRERIE e DATI  
+2. EDA separated variable  
+3. Train Test Val Split
+4. handling Missing values
+5. Outliers and influential observation detections
+6. variables transformations
+7. handling collinearity
+8. Scaling
+9. saving the data
+
+
+#####################################################################################################
+################################### IMPORT LIBRERIE e DATI ##########################################
+#####################################################################################################
+
 ```{r}
 library(ggplot2)
 library(ggcorrplot)
 library(mice)
 library(knitr)
 library(dplyr)
+library(car)
+library(MASS)
 ```
 
 ```{r}
@@ -52,7 +71,10 @@ X_mat = as.matrix(dat[,-c(1,2)])
 y = as.integer(dat$SeriousDlqin2yrs)
 ```
 
-### Train Test Val Split
+
+#####################################################################################################
+################################### Train Test Val Split ############################################
+#####################################################################################################
 
 ```{r}
 set.seed(123)
@@ -100,38 +122,22 @@ cat("Proporzione default - test: ", mean(y_test), "\n")
 ```
 
 
-# Trasformazione Box–Tidwell
+#####################################################################################################
+################################### EDA separated variable ##########################################
+#####################################################################################################
 
 
-
-# Analisi esplorativa delle singole variabili
-
-## SeriousDlqin2yrs
+## SeriousDlqin2yrs ---------------------------------------------------------------------------------
 
 Person experienced 90 days past due delinquency or worse. (Type: Y/N) Indica se la persona ha avuto almeno un evento di grave delinquency (≥90 giorni di ritardo) nei successivi 2 anni
 
 1 : evento avvenuto 0 : evento non avvenuto (Nessuna grave delinquency nei 2 anni successivi)
 
 ```{r}
-library(ggplot2)
-
-ggplot(data.frame(y_train), aes(x = factor(y_train))) +
-  geom_bar(fill = "steelblue") +
-  scale_x_discrete(
-    labels = c("0" = "No delinquency",
-               "1" = "Delinquency")
-  ) +
-  labs(
-    title = "Distribution of Serious Delinquency Events",
-    x = NULL,
-    y = "Number of customers"
-  ) +
-  theme_minimal()
-
-table(y_train)
+barplot(table(y_train))
 ```
 
-## RevolvingUtilizationOfUnsecuredLines
+## RevolvingUtilizationOfUnsecuredLines ----------------------------------------------------------------
 
 Ratio of total balance on unsecured revolving credit lines to total available credit limits (Type: Percentage).
 This variable measures the proportion of available revolving credit that is currently being used by the borrower.
@@ -148,12 +154,7 @@ Total revolving credit limit: somma dei limiti massimi disponibili su tali strum
 
 ovviamente più si avvicina ad 1 e più aumenta la probabilità di default (maggiore di 1 è molto rischioso poichè il saldo supera il limite teorico disponibile)
 
-```{r}
-boxplot(X_train[,"RevolvingUtilizationOfUnsecuredLines"], horizontal = TRUE)
-```
-```{r}
-hist(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]), breaks = 50, prob = TRUE)
-```
+
 ```{r}
 plot(X_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
 ```
@@ -161,57 +162,25 @@ plot(X_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
 plot(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]), jitter(y_train))
 ```
 
-
-relazione con il target:
-Stimiamo $P(y=1 | x)$ per capire la relazione tra la variabile ed il target
+c'è una nuvola di punti (che in relazione al numero totale di osservazioni è di piccola dimensione) con valori anomali
 
 ```{r}
-#| eval: false 
-
-df <- data.frame(
-  x = X_train[, "RevolvingUtilizationOfUnsecuredLines"],
-  y = y_train
-)
-
-df %>%
-  mutate(
-    x_log = log1p(x),
-    bin = ntile(x_log, 20)
-  ) %>%
-  group_by(bin) %>%
-  summarise(
-    x_mean = mean(x_log),
-    default_rate = mean(y)
-  ) %>%
-  ggplot(aes(x_mean, default_rate)) +
-  geom_line() +
-  geom_point()
+boxplot(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]) ~ y_train)
 ```
 
+rimuovo le osservazioni con RevolvingUtilizationOfUnsecuredLines > 100 (rimuovendo tali osservazioni sono migliorante anche le performance di un modello logistico frequentista classico sui due training set diversi (testati sullo stesso validation set), ROC-AUC da 0.76 a 0.8 e PR-AUC da 0.23 a 0.24)
 
 ```{r}
-X_train$RevolvingUtilization_log <- 
-  log1p(X_train$RevolvingUtilizationOfUnsecuredLines)
+keep <- X_train[, "RevolvingUtilizationOfUnsecuredLines"] <= 100
 
-X_test$RevolvingUtilization_log <- 
-  log1p(X_test$RevolvingUtilizationOfUnsecuredLines)
-
-
-X_train$RevolvingUtilization_extreme <-
-  as.numeric(X_train$RevolvingUtilizationOfUnsecuredLines > 1)
-
-X_test$RevolvingUtilization_extreme <-
-  as.numeric(X_test$RevolvingUtilizationOfUnsecuredLines > 1)
-```
-
-```{r}
-X_train$RevolvingUtilizationOfUnsecuredLines <- NULL
-X_test$RevolvingUtilizationOfUnsecuredLines <- NULL
+X_train <- X_train[keep, , drop = FALSE]
+y_train <- y_train[keep]
 ```
 
 
 
-## age
+
+## age -------------------------------------------------------------------------------------------------
 
 Age of borrower in years (Type: Integer)
 
@@ -261,39 +230,8 @@ boxplot(
 )
 ```
 
-Impute invalid ages (age == 0) with the median age of valid observations
 
-```{r}
-median_age <- median(
-  X_train$age[X_train$age > 0],
-  na.rm = TRUE
-)
-
-X_train$age[X_train$age == 0] <- median_age
-X_test$age[X_test$age == 0] <- median_age
-```
-
-```{r}
-X_train$AgeSquared <- X_train$age^2
-X_test$AgeSquared <- X_test$age^2
-```
-
-ha senso aggiungere age^2?
-
-```{r}
-model_linear <- glm(y_train ~ age, data = X_train, family = binomial)
-model_quad   <- glm(y_train ~ age + AgeSquared, data = X_train, family = binomial)
-
-cat("AIC modello lineare:", AIC(model_linear), "\n")
-cat("AIC modello quadratico:", AIC(model_quad), "\n\n")
-
-print(anova(model_linear, model_quad, test = "Chisq"))
-```
-
-
-## MonthlyIncome
-
-Monthly income (Type: Real)
+## MonthlyIncome -----------------------------------------------------------------------------------
 
 ```{r}
 summary(X_train[,"MonthlyIncome"])
@@ -307,22 +245,16 @@ plot(X_train[,"MonthlyIncome"], jitter(y_train))
 hist(X_train[,"MonthlyIncome"][X_train[,"MonthlyIncome"] <= 30000], breaks=100)
 ```
 
-```{r}
-X_train[,"logMonthlyIncome"] = log1p(X_train[,"MonthlyIncome"])
-X_test[,"logMonthlyIncome"] = log1p(X_test[,"MonthlyIncome"])
 
-X_train$MonthlyIncome <- NULL
-X_test$MonthlyIncome <- NULL
-```
 
 numero di persone con montlhy income pari ad 1 (sono chiaramenti errori / replacement forzati)
 
 ```{r}
-sum(exp(X_train$logMonthlyIncome) - 1 == 1, na.rm = TRUE)
+sum(X_train$MonthlyIncome== 1, na.rm = TRUE)
 ```
 
 ```{r}
-income <- expm1(X_train$logMonthlyIncome)
+income <- X_train$MonthlyIncome
 
 summary(X_train$DebtRatio[income == 1])
 summary(X_train$DebtRatio[income > 1])
@@ -333,25 +265,22 @@ mean(y_train[income == 1], na.rm = TRUE)
 mean(y_train[income > 1], na.rm = TRUE)
 ```
 
-Traformo i monthly pari ad 1 in redditi mancanti e successivamente procederò tramite imputazioni
+Trasformo i monthly pari ad 1 in redditi mancanti e successivamente procederò tramite imputazioni
 
 ```{r}
 # TRAIN
-income <- expm1(X_train$logMonthlyIncome)
-income[income <= 1] <- NA
-X_train$logMonthlyIncome <- log1p(income)
-X_train$IncomeMissing <- as.integer(is.na(X_train$logMonthlyIncome))
+X_train$MonthlyIncome[X_train$MonthlyIncome <= 10] <- NA
+
+# TRAIN
+X_train$MonthlyIncome[X_train$MonthlyIncome <= 10] <- NA
 
 # TEST
-income <- expm1(X_test$logMonthlyIncome)
-income[income <= 1] <- NA
-X_test$logMonthlyIncome <- log1p(income)
-X_test$IncomeMissing <- as.integer(is.na(X_test$logMonthlyIncome))
+X_test$MonthlyIncome[X_test$MonthlyIncome <= 10] <- NA
 ```
 
 
 
-## DebtRatio
+## DebtRatio ---------------------------------------------------------------------------------
 
 Monthly debt payments divided by monthly gross income (Type: Percentage)
 
@@ -376,23 +305,12 @@ hist(X_train[,"DebtRatio"][X_train[,"DebtRatio"] <= 1])
 
 ```{r}
 X_train$DebtRatio <- pmin(X_train$DebtRatio, 5)
+X_val$DebtRatio <- pmin(X_val$DebtRatio, 5)
 X_test$DebtRatio <- pmin(X_test$DebtRatio, 5)
-
-# controllo quante osservazioni sono state effettivamente clippate
-cat("Train - valori clippati:", sum(X_mat[idx, "DebtRatio"] > 5), "\n")
-cat("Test  - valori clippati:", sum(X_mat[-idx, "DebtRatio"] > 5), "\n")
-```
-
-```{r}
-X_train$logDebtRatio <- log1p(X_train$DebtRatio)
-X_test$logDebtRatio <- log1p(X_test$DebtRatio)
-
-X_train$DebtRatio <- NULL
-X_test$DebtRatio <- NULL
 ```
 
 
-## NumberOfOpenCreditLinesAndLoans
+## NumberOfOpenCreditLinesAndLoans ------------------------------------------------------------------------------------------
 
 Number of open loans and credit lines (Type: Integer)
 
@@ -419,25 +337,8 @@ tapply(y_train, X_train$NumberOfOpenCreditLinesAndLoans > 20, mean)
 tapply(y_train, cut(X_train$NumberOfOpenCreditLinesAndLoans, breaks = c(0,5,10,20,100)), mean)
 ```
 
-tengo solo il logaritmo
 
-```{r}
-# TRAIN
-X_train$CreditLines_log <- log1p(
-  X_train$NumberOfOpenCreditLinesAndLoans
-)
-
-# TEST
-X_test$CreditLines_log <- log1p(
-  X_test$NumberOfOpenCreditLinesAndLoans
-)
-
-X_train$NumberOfOpenCreditLinesAndLoans <- NULL
-X_test$NumberOfOpenCreditLinesAndLoans <- NULL
-```
-
-
-## NumberRealEstateLoansOrLines
+## NumberRealEstateLoansOrLines -------------------------------------------------------------------------
 
 Number of real estate loans or credit lines (Type: Integer) Rappresenta il numero di prestiti o linee di credito legati a immobili
 
@@ -449,26 +350,9 @@ summary(X_train[,"NumberRealEstateLoansOrLines"])
 plot(X_train[,"NumberRealEstateLoansOrLines"], jitter(y_train))
 ```
 
-Inserisco un flag per che separa chi ha un mutuo da chi non lo ha (senza guardare il numero di mutui)
-
-```{r}
-# TRAIN
-X_train$HasRealEstateLoan <- as.integer(
-  X_train$NumberRealEstateLoansOrLines > 0
-)
-
-# TEST
-X_test$HasRealEstateLoan <- as.integer(
-  X_test$NumberRealEstateLoansOrLines > 0
-)
-
-X_train$NumberRealEstateLoansOrLines <- NULL
-X_test$NumberRealEstateLoansOrLines <- NULL
-```
 
 
-
-## NumberOfDependents
+## NumberOfDependents ---------------------------------------------------------------------------------
 
 Number of dependents excluding borrower (Type: Integer)
 
@@ -487,15 +371,15 @@ hist(X_train[,"NumberOfDependents"], prob=T)
 ```
 
 
-## NumberOfTime30-59DaysPastDueNotWorse
+## NumberOfTime30-59DaysPastDueNotWorse ----------------------------------------------------------------
 
 Times borrower was 30–59 days past due in the last 2 years (Type: Integer). Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo tra 30 e 59 giorni su un pagamento.
 
-## NumberOfTimes90DaysLate
+## NumberOfTimes90DaysLate -----------------------------------------------------------------------------
 
 Times borrower was 90+ days past due (Type: Integer) Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo di 90 giorni o più su un pagamento.
 
-## NumberOfTime60-89DaysPastDueNotWorse
+## NumberOfTime60-89DaysPastDueNotWorse -----------------------------------------------------------------
 
 Times borrower was 60–89 days past due in the last 2 years (Type: Integer).\
 Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo tra 60 e 89 giorni su un pagamento.
@@ -536,6 +420,15 @@ dp_ext_train <- (
 
 X_train$dp_extreme <- as.integer(dp_ext_train)
 
+# VAL
+dp_ext_val <- (
+  X_val$NumberOfTime30_59DaysPastDueNotWorse >= 90 |
+  X_val$NumberOfTime60_89DaysPastDueNotWorse >= 90 |
+  X_val$NumberOfTimes90DaysLate >= 90
+)
+
+X_val$dp_extreme <- as.integer(dp_ext_val)
+
 # TEST
 dp_ext_test <- (
   X_test$NumberOfTime30_59DaysPastDueNotWorse >= 90 |
@@ -563,6 +456,24 @@ X_train$NumberOfTimes90DaysLate[
 ```
 
 ```{r}
+sum(is.na(X_train$NumberOfTime30_59DaysPastDueNotWorse))
+```
+
+```{r}
+X_val$NumberOfTime30_59DaysPastDueNotWorse[
+  X_val$NumberOfTime30_59DaysPastDueNotWorse >= 90
+] <- NA
+
+X_val$NumberOfTime60_89DaysPastDueNotWorse[
+  X_val$NumberOfTime60_89DaysPastDueNotWorse >= 90
+] <- NA
+
+X_val$NumberOfTimes90DaysLate[
+  X_val$NumberOfTimes90DaysLate >= 90
+] <- NA
+```
+
+```{r}
 X_test$NumberOfTime30_59DaysPastDueNotWorse[
   X_test$NumberOfTime30_59DaysPastDueNotWorse >= 90
 ] <- NA
@@ -576,37 +487,12 @@ X_test$NumberOfTimes90DaysLate[
 ] <- NA
 ```
 
-imputo gli NA con la mediana
 
-```{r}
-late_vars <- c(
-  "NumberOfTime30_59DaysPastDueNotWorse",
-  "NumberOfTime60_89DaysPastDueNotWorse",
-  "NumberOfTimes90DaysLate"
-)
-
-for (v in late_vars) {
-  med <- median(X_train[[v]], na.rm = TRUE)
-  X_train[[v]][is.na(X_train[[v]])] <- med
-  X_test[[v]][is.na(X_test[[v]])] <- med
-}
-```
+#####################################################################################################
+######################################### Missing values ############################################
+#####################################################################################################
 
 
-
-
-
-
-# Diagnostica della multicollinearità
-### COR
-### VIF
-### CI & CN
-### VDP
-
-
-
-
-# Missing values
 
 ```{r}
 # numero totale di na
@@ -616,6 +502,12 @@ for (v in late_vars) {
 ```{r}
 # na per colonna
 (colSums(is.na(dat)))
+```
+
+```{r}
+# na per colonna (TRAIN set)
+(colSums(is.na(X_train)))
+
 ```
 
 ```{r}
@@ -629,62 +521,186 @@ Il sospetto è che questi siano effettivamente dei valori MNAR (Missing Not At R
 Il notebook https://www.kaggle.com/code/regivm/data-cleaning-and-eda-tutorial di kaggle presenta un estensivo trattamento dei valori mancanti, per l'obiettivo di questo progetto mi limiterò ad eseguire imputazioni di base.
 
 
-Gestione di "NumberOfDependents"
+# NumberOfDependents  -----------------------------------------------------------------------------------------------------------------
+
+
 ```{r}
 # TRAIN 
 X_train$DependentsMissing <- as.integer(is.na(X_train$NumberOfDependents))
 X_train$NumberOfDependents[is.na(X_train$NumberOfDependents)] <- 0 # essendo 0 la mediana
+
+# VAL
+X_val$DependentsMissing <- as.integer(is.na(X_val$NumberOfDependents))
+X_val$NumberOfDependents[is.na(X_val$NumberOfDependents)] <- 0 
 
 # TEST
 X_test$DependentsMissing <- as.integer(is.na(X_test$NumberOfDependents))
 X_test$NumberOfDependents[is.na(X_test$NumberOfDependents)] <- 0
 ```
 
-Gestione di "logMonthlyIncome"
-```{r}
-train_inc <- X_train[!is.na(X_train$logMonthlyIncome), ]
 
-imp_model <- lm(
-  logMonthlyIncome ~ . - IncomeMissing,
-  data = train_inc
-)
+# MonthlyIncome -------------------------------------------------------------------------------------------------------
+
+```{r}
+# aggiungo flag ai missing (monthlyincome)
+
+X_train$IncomeMissing = as.integer(is.na(X_train$MonthlyIncome))
+X_val$IncomeMissing = as.integer(is.na(X_val$MonthlyIncome))
+X_test$IncomeMissing = as.integer(is.na(X_test$MonthlyIncome))
 ```
 
-sanity check sul modello di imputazione
+# MICE/PMM imputation
 
 ```{r}
-cat("Summary del modello:\n")
-print(summary(imp_model))
-cat("\nR-squared:", summary(imp_model)$r.squared, "\n")
+set.seed(123)
 
-# maschera dei valori mancanti PRIMA di sovrascrivere X_train
-na_mask_train <- is.na(X_train$logMonthlyIncome)
+# 1. Combino gli split e identifico la provenienza di ogni riga
+n_train <- nrow(X_train)
+n_val   <- nrow(X_val)
+n_test  <- nrow(X_test)
 
-# calcolo i valori imputati UNA volta sola
-imputed_vals <- predict(imp_model, newdata = X_train[na_mask_train, ])
+train_data <- as.data.frame(X_train)
+val_data   <- as.data.frame(X_val)
+test_data  <- as.data.frame(X_test)
 
-cat("\nSummary valori imputati (scala log):\n")
-print(summary(imputed_vals))
-cat("\nSummary valori imputati (scala originale):\n")
-print(summary(expm1(imputed_vals)))
-cat("\nN. valori imputati negativi (su scala log):", sum(imputed_vals < 0), "\n")
-
-# ORA sovrascrivo X_train usando gli stessi valori già calcolati
-X_train$logMonthlyIncome[na_mask_train] <- imputed_vals
-
-# confronto distribuzione osservati vs imputati
-hist(X_train$logMonthlyIncome[X_train$IncomeMissing == 0 & !na_mask_train],
-     breaks = 50, main = "Osservati", xlab = "logMonthlyIncome")
-hist(imputed_vals,
-     breaks = 50, main = "Imputati", xlab = "logMonthlyIncome")
-
-# TEST
-X_test$logMonthlyIncome[
-  is.na(X_test$logMonthlyIncome)
-] <- predict(
-  imp_model,
-  newdata = X_test[is.na(X_test$logMonthlyIncome), ]
+stopifnot(
+  identical(names(train_data), names(val_data)),
+  identical(names(train_data), names(test_data))
 )
+
+combined <- rbind(train_data, val_data, test_data)
+
+# TRUE per validation e test: queste righe non stimano
+# i modelli d'imputazione
+ignore_rows <- c(
+  rep(FALSE, n_train),
+  rep(TRUE, n_val + n_test)
+)
+
+# 2. Definisco metodi e matrice dei predittori
+meth <- mice::make.method(combined)
+pred <- mice::make.predictorMatrix(combined)
+
+# PMM per tutte le variabili numeriche con missing
+numeric_cols <- names(combined)[
+  vapply(combined, is.numeric, logical(1))
+]
+
+meth[numeric_cols] <- "pmm"
+
+# Le variabili senza missing non devono essere imputate
+meth[colSums(is.na(combined)) == 0] <- ""
+
+# Indicatori di missingness: li mantengo, ma non li uso
+# come predittori e non li imputo
+flag_cols <- intersect(
+  c("IncomeMissing", "DependentsMissing", "dp_extreme"),
+  names(combined)
+)
+
+meth[flag_cols] <- ""
+pred[, flag_cols] <- 0
+
+# Se esiste una colonna ID, non la uso come predittore
+id_cols <- intersect(c("X", "ID", "Id"), names(combined))
+
+pred[, id_cols] <- 0
+meth[id_cols] <- ""
+
+# 3. Stimo MICE usando solo le righe del training
+imp <- mice::mice(
+  combined,
+  m = 1,
+  maxit = 10,
+  method = meth,
+  predictorMatrix = pred,
+  ignore = ignore_rows,
+  printFlag = FALSE,
+  seed = 123
+)
+
+# 4. Recupero il dataset completato
+completed <- mice::complete(imp, 1)
+
+# 5. Ricostruisco i tre split
+X_train_imp <- completed[seq_len(n_train), , drop = FALSE]
+
+val_idx <- n_train + seq_len(n_val)
+X_val_imp <- completed[val_idx, , drop = FALSE]
+
+test_idx <- n_train + n_val + seq_len(n_test)
+X_test_imp <- completed[test_idx, , drop = FALSE]
+
+# 6. Verifiche
+cat("NA residui nel train:", sum(is.na(X_train_imp)), "\n")
+cat("NA residui nella validation:", sum(is.na(X_val_imp)), "\n")
+cat("NA residui nel test:", sum(is.na(X_test_imp)), "\n")
+
+summary(X_train_imp$MonthlyIncome)
+```
+
+```{r}
+# NA residui
+colSums(is.na(X_train_imp))
+colSums(is.na(X_val_imp))
+colSums(is.na(X_test_imp))
+
+# Distribuzione del reddito prima e dopo
+summary(X_train$MonthlyIncome)
+summary(X_train_imp$MonthlyIncome)
+```
+
+
+#####################################################################################################
+######################################### Outliers ##################################################
+#####################################################################################################
+
+# fitto un logistico preliminare e lo "diagnostico"
+
+```{r}
+df_train = X_train_imp
+df_train$y = y_train
+```
+
+```{r}
+m1 = glm(y ~ ., data = df_train, family = binomial(link = "logit"))
+summary(m1)
+```
+
+
+
+```{r}
+with(df_train, table(dp_extreme, y))
+```
+
+
+# Diagnostica di influenza
+
+### Cook distance
+### DFBETAS
+
+
+
+
+#####################################################################################################
+################################### variable transformation #########################################
+#####################################################################################################
+
+
+
+# Trasformazione Box–Tidwell
+
+```{r}
+# Monthly Income
+X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
+
+mod_bt <- glm(
+  y_train ~ MonthlyIncome + MonthlyIncome_logterm,
+  data = cbind(X_train, y_train = y_train),
+  family = binomial(link = "logit")
+)
+
+summary(mod_bt)
 ```
 
 
@@ -720,8 +736,147 @@ boxplot(logMonthlyIncome ~ IncomeMissing, data = X_train)
 
 
 
+```{r}
+# Debt Ratio
+X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
+```
 
-# Scaling
+```{r}
+# RevolvingUtilizationOfUnsecuredLines 
+X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
+```
+
+```{r}
+# age
+X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
+```
+
+
+
+# RevolvingUtilizationOfUnsecuredLines ------------------------------------------------------------------------------------
+
+```{r}
+X_train$RevolvingUtilization_log <- 
+  log1p(X_train$RevolvingUtilizationOfUnsecuredLines)
+
+X_test$RevolvingUtilization_log <- 
+  log1p(X_test$RevolvingUtilizationOfUnsecuredLines)
+```
+
+```{r}
+X_train$RevolvingUtilizationOfUnsecuredLines <- NULL
+X_test$RevolvingUtilizationOfUnsecuredLines <- NULL
+```
+
+# Age ------------------------------------------------------------------------------------------------
+
+```{r}
+X_train$AgeSquared <- X_train$age^2
+X_test$AgeSquared <- X_test$age^2
+```
+
+ha senso aggiungere age^2?
+
+```{r}
+model_linear <- glm(y_train ~ age, data = X_train, family = binomial)
+model_quad   <- glm(y_train ~ age + AgeSquared, data = X_train, family = binomial)
+
+cat("AIC modello lineare:", AIC(model_linear), "\n")
+cat("AIC modello quadratico:", AIC(model_quad), "\n\n")
+
+print(anova(model_linear, model_quad, test = "Chisq"))
+```
+
+
+# Monthly Income --------------------------------------------------------------------------------------
+
+```{r}
+X_train[,"logMonthlyIncome"] = log1p(X_train[,"MonthlyIncome"])
+X_test[,"logMonthlyIncome"] = log1p(X_test[,"MonthlyIncome"])
+
+X_train$MonthlyIncome <- NULL
+X_test$MonthlyIncome <- NULL
+```
+
+
+# Dept ratio ------------------------------------------------------------------------------------------
+
+```{r}
+X_train$logDebtRatio <- log1p(X_train$DebtRatio)
+X_test$logDebtRatio <- log1p(X_test$DebtRatio)
+
+X_train$DebtRatio <- NULL
+X_test$DebtRatio <- NULL
+```
+
+# NumberOfOpenCreditLinesAndLoans ------------------------------------------------------------------------------------------
+
+```{r}
+# TRAIN
+X_train$CreditLines_log <- log1p(
+  X_train$NumberOfOpenCreditLinesAndLoans
+)
+
+# TEST
+X_test$CreditLines_log <- log1p(
+  X_test$NumberOfOpenCreditLinesAndLoans
+)
+
+X_train$NumberOfOpenCreditLinesAndLoans <- NULL
+X_test$NumberOfOpenCreditLinesAndLoans <- NULL
+```
+
+
+# NumberRealEstateLoansOrLines ------------------------------------------------------------------------------------------
+
+Inserisco un flag per che separa chi ha un mutuo da chi non lo ha (senza guardare il numero di mutui)
+
+```{r}
+# TRAIN
+X_train$HasRealEstateLoan <- as.integer(
+  X_train$NumberRealEstateLoansOrLines > 0
+)
+
+# TEST
+X_test$HasRealEstateLoan <- as.integer(
+  X_test$NumberRealEstateLoansOrLines > 0
+)
+
+# X_train$NumberRealEstateLoansOrLines <- NULL
+# X_test$NumberRealEstateLoansOrLines <- NULL
+```
+
+
+#####################################################################################################
+#################################### collinearity diagnosis #########################################
+#####################################################################################################
+
+
+### COR
+
+```{r}
+# flags
+cat(mean(df_train$dp_extreme == df_train$DependentsMissing),  "\n")
+cat(mean(df_train$IncomeMissing == df_train$DependentsMissing), "\n")
+cat(mean(df_train$IncomeMissing == df_train$dp_extreme), "\n")
+```
+
+### VIF
+
+
+### CI & CN
+
+
+### VDP
+
+
+
+
+
+#####################################################################################################
+############################################## Scaling ##############################################
+#####################################################################################################
+
 
 ```{r}
 apply(X_train, 2, mean)
@@ -767,19 +922,10 @@ X_test[, cols_to_scale] <- scale(X_test[, cols_to_scale],
 
 
 
+#####################################################################################################
+########################################## Saving data ##############################################
+#####################################################################################################
 
-# Diagnostica di influenza
-
-### Cook distance
-### DFBETAS
-
-
-
-
-
-
-
-# Saving data
 
 ```{r}
 #| eval: false 
