@@ -1,6 +1,6 @@
 # Frequentist Logistic Modeling
 
-### Librerie e dati
+# Librerie e dati -------------------------------------------------------------------------------------------
 
 ```{r}
 library(pROC)
@@ -24,7 +24,8 @@ sds <- readRDS("data/processed/sds.rds")
 ```
 
 
-# Stima Del Modello (ML)
+# Stima Del Modello (ML) -------------------------------------------------------------------------
+
 
 ```{r}
 df_train <- as.data.frame(X_train)
@@ -40,7 +41,161 @@ summary(fit_frequentist)
 ```
 
 
-# Prediction su TRAIN e TEST (ROC / PR-AUC)
+# diagnostica delle osservazioni ---------------------------------------------------------------------
+
+in parte è già stata fatta durante il pre-processing dei dati ma controlliamo nuovamente per sicurezza
+
+
+# Inferenza -------------------------------------------------------------------------------------------
+
+### Test di Wald
+
+```{r}
+summary(glm1)
+
+# Wald CI
+confint.default(glm1)
+
+# Odds ratio e odds ratio CI
+OR <- exp(coef(glm1))
+CI_OR <- exp(confint.default(glm1))
+
+cbind(
+  OddsRatio = OR,
+  Lower95 = CI_OR[, 1],
+  Upper95 = CI_OR[, 2]
+)
+```
+
+### Likelihood-ratio test (LRT)
+
+test globale: solo intercetta
+
+```{r}
+glm_null <- glm(
+  y ~ 1,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+anova(glm_null, glm1, test = "Chisq")
+```
+
+Test di un gruppo di variabili
+
+```{r}
+glm_no_late <- update(
+  glm1,
+  . ~ . -
+    NumberOfTime30_59DaysPastDueNotWorse -
+    NumberOfTimes90DaysLate -
+    NumberOfTime60_89DaysPastDueNotWorse
+)
+
+anova(glm_no_late, glm1, test = "Chisq")
+```
+
+### Rao–Score test
+
+```{r}
+drop1(glm1, test = "Rao")
+```
+
+```{r}
+anova(glm_no_late, glm1, test = "Rao")
+```
+
+### Devianza nulla, devianza residua e goodness-of-fit
+
+nel summary sono riportate le quantità principali
+
+```{r}
+D_null <- glm1$null.deviance
+D_res  <- deviance(glm1)
+
+df_null <- glm1$df.null
+df_res  <- df.residual(glm1)
+
+c(
+  NullDeviance = D_null,
+  ResidualDeviance = D_res,
+  Improvement = D_null - D_res,
+  ResidualDF = df_res
+)
+
+# LRT globale from scratch
+LR <- D_null - D_res
+df_LR <- df_null - df_res
+p_LR <- pchisq(LR, df = df_LR, lower.tail = FALSE)
+
+c(LR = LR, df = df_LR, p_value = p_LR)
+```
+
+### X^2 Pearson
+
+```{r}
+X2_Pearson <- sum(
+  residuals(glm1, type = "pearson")^2
+)
+
+df_Pearson <- df.residual(glm1)
+
+p_Pearson <- pchisq(
+  X2_Pearson,
+  df = df_Pearson,
+  lower.tail = FALSE
+)
+
+c(
+  Pearson_X2 = X2_Pearson,
+  df = df_Pearson,
+  X2_over_df = X2_Pearson / df_Pearson,
+  p_value = p_Pearson
+)
+```
+
+### Calibration
+
+```{r}
+stopifnot(all(na.omit(unique(df_train$y)) %in% c(0, 1)))
+
+calib_data <- data.frame(
+  y = df_train$y,
+  p = fitted(glm1)
+)
+
+# Dieci gruppi ordinati per probabilità prevista
+calib_data$decile <- dplyr::ntile(calib_data$p, 10)
+
+calibration <- aggregate(
+  cbind(y, p) ~ decile,
+  data = calib_data,
+  FUN = mean
+)
+
+names(calibration) <- c(
+  "Decile",
+  "ObservedDefaultRate",
+  "MeanPredictedRisk"
+)
+
+calibration
+```
+
+```{r}
+plot(
+  calibration$MeanPredictedRisk,
+  calibration$ObservedDefaultRate,
+  xlab = "Rischio medio previsto",
+  ylab = "Frequenza osservata di default",
+  main = "Calibration plot",
+  pch = 19
+)
+
+abline(0, 1, lty = 2, col = "red")
+```
+
+# Prediction su TRAIN e TEST (ROC / PR-AUC) -----------------------------------------------------------------------
 
 ```{r}
 # Probabilità a posteriori stimate

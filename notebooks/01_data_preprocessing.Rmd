@@ -663,23 +663,204 @@ df_train$y = y_train
 ```
 
 ```{r}
-m1 = glm(y ~ ., data = df_train, family = binomial(link = "logit"))
-summary(m1)
-```
-
-
-
-```{r}
 with(df_train, table(dp_extreme, y))
 ```
 
+```{r}
+glm1 = glm(y ~ ., data = df_train, family = binomial(link = "logit"))
+summary(glm1)
+```
 
-# Diagnostica di influenza
 
-### Cook distance
+
+### Residui di pearson e di Devianza
+
+```{r}
+r_pearson  <- residuals(glm1, type = "pearson")
+r_deviance <- residuals(glm1, type = "deviance")
+
+par(mfrow = c(1, 2))
+
+plot(p_hat, r_pearson,
+     xlab = "Probabilità stimata",
+     ylab = "Residui di Pearson",
+     main = "Pearson residuals",
+     pch = 16, cex = 0.35)
+abline(h = c(-3, 0, 3), lty = c(2, 1, 2))
+
+plot(p_hat, r_deviance,
+     xlab = "Probabilità stimata",
+     ylab = "Residui di devianza",
+     main = "Deviance residuals",
+     pch = 16, cex = 0.35)
+abline(h = c(-3, 0, 3), lty = c(2, 1, 2))
+
+par(mfrow = c(1, 1))
+```
+
+c'è un residuo di pearson di valore -60 milioni e qualche residuo di devianza con valori superiori a 3 in valore assoluto
+
+```{r}
+which(abs(r_deviance) > 3)
+```
+
+```{r}
+which(abs(r_pearson) > 10000000)
+```
+
+### Leverage
+
+```{r}
+h <- hatvalues(glm1)
+
+n <- nobs(glm1)
+p <- length(coef(glm1))
+
+# Soglia
+lev_cut <- 2 * p / n
+sum(h > lev_cut)
+
+head(
+  order(h, decreasing = TRUE),
+  20
+)
+```
+
+### Cook's distance
+
+```{r}
+cook <- cooks.distance(glm1)
+
+plot(cook,
+     type = "h",
+     main = "Cook's distance",
+     xlab = "Indice osservazione",
+     ylab = "Cook's distance")
+
+abline(h = 4 / n, col = "red", lty = 2)
+
+# osservazioni più influenti
+idx_cook <- order(cook, decreasing = TRUE)[1:20]
+
+data.frame(
+  row = idx_cook,
+  cooks_distance = cook[idx_cook],
+  leverage = h[idx_cook],
+  deviance_residual = r_deviance[idx_cook]
+)
+```
+
 ### DFBETAS
 
+```{r}
+dfb <- dfbetas(glm1)
 
+dim(dfb)
+colnames(dfb)
+
+# Soglia
+dfb_cut <- 2 / sqrt(n)
+
+# numero osservazioni sopra la soglia per coefficiente
+colSums(abs(dfb) > dfb_cut)
+
+# Oss più influenti per ciascun coefficiente
+top_dfb <- lapply(seq_len(ncol(dfb)), function(j) {
+  idx <- order(abs(dfb[, j]), decreasing = TRUE)[1:10]
+
+  data.frame(
+    observation = idx,
+    coefficient = colnames(dfb)[j],
+    dfbetas = dfb[idx, j]
+  )
+})
+
+names(top_dfb) <- colnames(dfb)
+
+# Esempio
+top_dfb$DebtRatio
+```
+
+### DFFITS
+
+```{r}
+dff <- dffits(glm1)
+
+dff_cut <- 2 * sqrt(p / n)
+
+sum(abs(dff) > dff_cut)
+
+idx_dff <- order(abs(dff), decreasing = TRUE)[1:20]
+
+data.frame(
+  row = idx_dff,
+  dffits = dff[idx_dff],
+  fitted_probability = p_hat[idx_dff],
+  leverage = h[idx_dff],
+  cooks_distance = cook[idx_dff]
+)
+```
+
+recap osservazioni da attenzionare
+
+```{r}
+diagnostics <- data.frame(
+  row = seq_len(n),
+  y = model.response(model.frame(glm1)),
+  fitted = p_hat,
+  pearson = r_pearson,
+  deviance = r_deviance,
+  leverage = h,
+  cooks = cook,
+  dffits = dff
+)
+
+diagnostics$flag_residual <- abs(diagnostics$deviance) > 3
+diagnostics$flag_leverage <- diagnostics$leverage > lev_cut
+diagnostics$flag_cook <- diagnostics$cooks > 4 / n
+diagnostics$flag_dffits <- abs(diagnostics$dffits) > dff_cut
+
+diagnostics$n_flags <- rowSums(
+  diagnostics[, c(
+    "flag_residual", "flag_leverage",
+    "flag_cook", "flag_dffits"
+  )]
+)
+
+diagnostics <- diagnostics[
+  order(diagnostics$n_flags, decreasing = TRUE),
+]
+
+head(diagnostics, 30)
+```
+
+### probabilità estreme
+
+ci sono inoltre delle osservazioni che hanno probabilità estreme
+
+```{r}
+# prob. stimate
+p_hat <- fitted(glm1)
+
+sum(p_hat < 1e-8)
+sum(p_hat > 1 - 1e-8)
+```
+
+```{r}
+# Osservazioni con probabilità estreme
+idx_extreme <- which(p_hat < 1e-8 | p_hat > 1 - 1e-8)
+
+head(
+  data.frame(
+    row = idx_extreme,
+    y = model.response(model.frame(glm1))[idx_extreme],
+    fitted = p_hat[idx_extreme],
+    r_deviance = r_deviance[idx_extreme],
+    leverage = h[idx_extreme]
+  ),
+  20
+)
+```
 
 
 #####################################################################################################
