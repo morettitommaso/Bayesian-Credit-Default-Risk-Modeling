@@ -14,7 +14,7 @@ the notebook is devided into 9 sections:
 
 
 #####################################################################################################
-################################### IMPORT LIBRERIE e DATI ##########################################
+################################### Import librerie e dati ##########################################
 #####################################################################################################
 
 ```{r}
@@ -304,9 +304,9 @@ hist(X_train[,"DebtRatio"][X_train[,"DebtRatio"] <= 1])
 ```
 
 ```{r}
-X_train$DebtRatio <- pmin(X_train$DebtRatio, 5)
-X_val$DebtRatio <- pmin(X_val$DebtRatio, 5)
-X_test$DebtRatio <- pmin(X_test$DebtRatio, 5)
+# X_train$DebtRatio <- pmin(X_train$DebtRatio, 5)
+# X_val$DebtRatio <- pmin(X_val$DebtRatio, 5)
+# X_test$DebtRatio <- pmin(X_test$DebtRatio, 5)
 ```
 
 
@@ -671,6 +671,10 @@ glm1 = glm(y ~ ., data = df_train, family = binomial(link = "logit"))
 summary(glm1)
 ```
 
+```{r}
+# probabilità stimate
+p_hat <- fitted(glm1)
+```
 
 
 ### Residui di pearson e di Devianza
@@ -839,9 +843,6 @@ head(diagnostics, 30)
 ci sono inoltre delle osservazioni che hanno probabilità estreme
 
 ```{r}
-# prob. stimate
-p_hat <- fitted(glm1)
-
 sum(p_hat < 1e-8)
 sum(p_hat > 1 - 1e-8)
 ```
@@ -871,88 +872,113 @@ head(
 
 # Trasformazione Box–Tidwell
 
+# Monthly Income --------------------------------------------------------------------------------------
+
+```{r}
+plot(df_train[,"MonthlyIncome"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"MonthlyIncome"], breaks=100)
+```
+
+```{r}
+plot(log(X_test_imp[,"MonthlyIncome"]), jitter(y_test))
+```
+
+```{r}
+hist(log(X_test_imp[,"MonthlyIncome"]), breaks=100)
+```
+
+```{r}
+# X_train[,"logMonthlyIncome"] = log(X_train[,"MonthlyIncome"])
+# X_test[,"logMonthlyIncome"] = log(X_test[,"MonthlyIncome"])
+```
+
 ```{r}
 # Monthly Income
-X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
+df_train$MonthlyIncome_logterm = df_train$MonthlyIncome * log(df_train$MonthlyIncome)
 
-mod_bt <- glm(
-  y_train ~ MonthlyIncome + MonthlyIncome_logterm,
-  data = cbind(X_train, y_train = y_train),
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
   family = binomial(link = "logit")
 )
 
-summary(mod_bt)
+summary(glm_bt)
 ```
 
 
 ```{r}
-plot(X_train[,"logMonthlyIncome"], jitter(y_train))
-```
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
 
-```{r}
-hist(X_train[,"logMonthlyIncome"], breaks=100)
-```
-
-```{r}
-plot(X_test[,"logMonthlyIncome"], jitter(y_test))
-```
-
-```{r}
-hist(X_test[,"logMonthlyIncome"], breaks=100)
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
 ```
 
 
-```{r}
-summary(X_train[,"logMonthlyIncome"])
-```
-
-```{r}
-hist(X_train$logMonthlyIncome[X_train$IncomeMissing == 0], breaks = 50)
-hist(X_train$logMonthlyIncome[X_train$IncomeMissing == 1], breaks = 50)
-```
-
-```{r}
-boxplot(logMonthlyIncome ~ IncomeMissing, data = X_train)
-```
-
-
-
-```{r}
-# Debt Ratio
-X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
-```
-
-```{r}
-# RevolvingUtilizationOfUnsecuredLines 
-X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
-```
-
-```{r}
-# age
-X_train$MonthlyIncome_logterm = X_train$MonthlyIncome * log(X_train$MonthlyIncome)
-```
 
 
 
 # RevolvingUtilizationOfUnsecuredLines ------------------------------------------------------------------------------------
 
 ```{r}
-X_train$RevolvingUtilization_log <- 
-  log1p(X_train$RevolvingUtilizationOfUnsecuredLines)
+# X_train$RevolvingUtilization_log <- 
+  #log1p(X_train$RevolvingUtilizationOfUnsecuredLines)
 
-X_test$RevolvingUtilization_log <- 
-  log1p(X_test$RevolvingUtilizationOfUnsecuredLines)
+# X_test$RevolvingUtilization_log <- 
+  #log1p(X_test$RevolvingUtilizationOfUnsecuredLines)
 ```
 
 ```{r}
-X_train$RevolvingUtilizationOfUnsecuredLines <- NULL
-X_test$RevolvingUtilizationOfUnsecuredLines <- NULL
+# X_train$RevolvingUtilizationOfUnsecuredLines <- NULL
+#X_test$RevolvingUtilizationOfUnsecuredLines <- NULL
 ```
+
+```{r}
+plot(df_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
+```
+
+```{r}
+hist(log1p(df_train[,"RevolvingUtilizationOfUnsecuredLines"]), breaks=100)
+```
+
+
+```{r}
+df_train$RUOUL_logterm = df_train$RevolvingUtilizationOfUnsecuredLines * log1p(df_train$RevolvingUtilizationOfUnsecuredLines)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+```{r}
+df_train$RUOUL_logterm = NULL
+```
+
+
 
 # Age ------------------------------------------------------------------------------------------------
 
 ```{r}
-X_train$AgeSquared <- X_train$age^2
+df_train$AgeSquared <- X_train$age^2
+X_val$AgeSquared = X_val$age^2
 X_test$AgeSquared <- X_test$age^2
 ```
 
@@ -960,7 +986,7 @@ ha senso aggiungere age^2?
 
 ```{r}
 model_linear <- glm(y_train ~ age, data = X_train, family = binomial)
-model_quad   <- glm(y_train ~ age + AgeSquared, data = X_train, family = binomial)
+model_quad   <- glm(y_train ~ age + AgeSquared, data = df_train, family = binomial)
 
 cat("AIC modello lineare:", AIC(model_linear), "\n")
 cat("AIC modello quadratico:", AIC(model_quad), "\n\n")
@@ -969,48 +995,137 @@ print(anova(model_linear, model_quad, test = "Chisq"))
 ```
 
 
-# Monthly Income --------------------------------------------------------------------------------------
-
-```{r}
-X_train[,"logMonthlyIncome"] = log1p(X_train[,"MonthlyIncome"])
-X_test[,"logMonthlyIncome"] = log1p(X_test[,"MonthlyIncome"])
-
-X_train$MonthlyIncome <- NULL
-X_test$MonthlyIncome <- NULL
-```
 
 
 # Dept ratio ------------------------------------------------------------------------------------------
 
 ```{r}
-X_train$logDebtRatio <- log1p(X_train$DebtRatio)
-X_test$logDebtRatio <- log1p(X_test$DebtRatio)
-
-X_train$DebtRatio <- NULL
-X_test$DebtRatio <- NULL
+plot(df_train[,"DebtRatio"], jitter(y_train))
 ```
+
+```{r}
+hist(log(df_train[,"DebtRatio"]), breaks=100)
+```
+
+```{r}
+plot(X_test_imp[,"DebtRatio"], jitter(y_test))
+```
+
+```{r}
+hist(X_test_imp[,"DebtRatio"], breaks=100)
+```
+
+
+
+
+```{r}
+# X_train$logDebtRatio <- log1p(X_train$DebtRatio)
+# X_test$logDebtRatio <- log1p(X_test$DebtRatio)
+
+# X_train$DebtRatio <- NULL
+# X_test$DebtRatio <- NULL
+```
+
+
+```{r}
+df_train$DebtRatio_logterm = df_train$DebtRatio * log1p(df_train$DebtRatio)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+
+
+
+
+
 
 # NumberOfOpenCreditLinesAndLoans ------------------------------------------------------------------------------------------
 
 ```{r}
-# TRAIN
-X_train$CreditLines_log <- log1p(
-  X_train$NumberOfOpenCreditLinesAndLoans
+plot(df_train[,"NumberOfOpenCreditLinesAndLoans"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"NumberOfOpenCreditLinesAndLoans"])
+```
+
+```{r}
+hist(log1p(df_train[,"NumberOfOpenCreditLinesAndLoans"]), breaks=100)
+```
+
+
+```{r}
+df_train$CreditLines_logterm = df_train$NumberOfOpenCreditLinesAndLoans * log1p(df_train$NumberOfOpenCreditLinesAndLoans)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
 )
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+
+
+```{r}
+# TRAIN
+# X_train$CreditLines_log <- log1p(
+  # X_train$NumberOfOpenCreditLinesAndLoans)
 
 # TEST
-X_test$CreditLines_log <- log1p(
-  X_test$NumberOfOpenCreditLinesAndLoans
-)
+# X_test$CreditLines_log <- log1p(
+  # X_test$NumberOfOpenCreditLinesAndLoans)
 
-X_train$NumberOfOpenCreditLinesAndLoans <- NULL
-X_test$NumberOfOpenCreditLinesAndLoans <- NULL
+# X_train$NumberOfOpenCreditLinesAndLoans <- NULL
+# X_test$NumberOfOpenCreditLinesAndLoans <- NULL
 ```
 
 
 # NumberRealEstateLoansOrLines ------------------------------------------------------------------------------------------
 
+```{r}
+plot(df_train[,"NumberRealEstateLoansOrLines"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"NumberRealEstateLoansOrLines"])
+```
+
+```{r}
+hist(log1p(df_train[,"NumberRealEstateLoansOrLines"]), breaks=100)
+```
+
+
+
 Inserisco un flag per che separa chi ha un mutuo da chi non lo ha (senza guardare il numero di mutui)
+
 
 ```{r}
 # TRAIN
@@ -1026,6 +1141,8 @@ X_test$HasRealEstateLoan <- as.integer(
 # X_train$NumberRealEstateLoansOrLines <- NULL
 # X_test$NumberRealEstateLoansOrLines <- NULL
 ```
+
+
 
 
 #####################################################################################################
