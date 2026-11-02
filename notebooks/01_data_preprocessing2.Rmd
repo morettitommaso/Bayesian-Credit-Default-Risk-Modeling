@@ -1,0 +1,1238 @@
+# Bayesian Credit Default Risk modeling - EDA & Pre-processing
+
+the notebook is devided into 9 sections:
+
+1. IMPORT LIBRERIE e DATI  
+2. EDA separated variable  
+3. Train Test Val Split
+4. handling Missing values
+5. Outliers and influential observation detections
+6. variables transformations
+7. handling collinearity
+8. Scaling
+9. saving the data
+
+
+#####################################################################################################
+################################### Import librerie e dati ##########################################
+#####################################################################################################
+
+```{r}
+library(ggplot2)
+library(ggcorrplot)
+library(mice)
+library(knitr)
+library(dplyr)
+library(car)
+library(MASS)
+```
+
+```{r}
+dat = read.csv("data/raw/cs-training.csv", header=T, sep=",")
+colnames(dat) <- gsub("\\.", "_", colnames(dat)) # sostituisce i "." con "_"
+```
+
+controllo per righe duplicate nel df
+
+```{r}
+cat("Righe totali:", nrow(dat), "\n")
+cat("Righe duplicate (incluso ID):", sum(duplicated(dat)), "\n")
+cat("Righe duplicate (escluso ID):", sum(duplicated(dat[,-1])), "\n")
+
+dat <- dat[!duplicated(dat[,-1]), ]
+
+cat("Righe dopo rimozione duplicati:", nrow(dat), "\n")
+```
+
+### Dataset overview
+
+```{r}
+cat("Dataset dimensions:\n")
+cat("Rows:", nrow(dat), "\n")
+cat("Columns:", ncol(dat), "\n\n")
+
+cat("Dataset structure:\n")
+str(dat)
+
+cat("\nDescriptive stats:\n")
+summary_table <- data.frame(
+  Variable = names(dat),
+  Mean = sapply(dat, mean, na.rm = TRUE),
+  SD = sapply(dat, sd, na.rm = TRUE),
+  Min = sapply(dat, min, na.rm = TRUE),
+  Max = sapply(dat, max, na.rm = TRUE)
+)
+
+kable(summary_table, digits = 2)
+```
+
+```{r}
+X_mat = as.matrix(dat[,-c(1,2)])
+y = as.integer(dat$SeriousDlqin2yrs)
+```
+
+
+#####################################################################################################
+################################### Train Test Val Split ############################################
+#####################################################################################################
+
+```{r}
+set.seed(123)
+
+N = nrow(X_mat)
+
+# campiono separatamente dentro ciascuna classe di y
+idx_pos <- which(y == 1)
+idx_neg <- which(y == 0)
+
+# splitto 60% train, 20% validation, 20% test
+# classe 1
+idx_pos_train <- sample(idx_pos, size = floor(0.6 * length(idx_pos)))
+idx_pos_rem <- setdiff(idx_pos, idx_pos_train)
+
+idx_pos_val <- sample(idx_pos_rem, size = floor(0.5 * length(idx_pos_rem)))
+idx_pos_test <- setdiff(idx_pos_rem, idx_pos_val)
+
+# classe 0
+idx_neg_train <- sample(idx_neg, size = floor(0.6 * length(idx_neg)))
+idx_neg_rem <- setdiff(idx_neg, idx_neg_train)
+
+idx_neg_val <- sample(idx_neg_rem, size = floor(0.5 * length(idx_neg_rem)))
+idx_neg_test <- setdiff(idx_neg_rem, idx_neg_val)
+
+# unisco le due classi
+idx_train <- c(idx_pos_train, idx_neg_train)
+idx_val   <- c(idx_pos_val, idx_neg_val)
+idx_test  <- c(idx_pos_test, idx_neg_test)
+
+# creo i dataset
+X_train <- as.data.frame(X_mat[idx_train, ])
+y_train <- y[idx_train]
+
+X_val <- as.data.frame(X_mat[idx_val, ])
+y_val <- y[idx_val]
+
+X_test <- as.data.frame(X_mat[idx_test, ])
+y_test <- y[idx_test]
+
+# le proporzioni di default devono essere simili
+cat("Proporzione default - train:", mean(y_train), "\n")
+cat("Proporzione default - validation:", mean(y_val), "\n")
+cat("Proporzione default - test: ", mean(y_test), "\n")
+```
+
+
+#####################################################################################################
+################################### EDA separated variable ##########################################
+#####################################################################################################
+
+
+## SeriousDlqin2yrs ---------------------------------------------------------------------------------
+
+Person experienced 90 days past due delinquency or worse. (Type: Y/N) Indica se la persona ha avuto almeno un evento di grave delinquency (≥90 giorni di ritardo) nei successivi 2 anni
+
+1 : evento avvenuto 0 : evento non avvenuto (Nessuna grave delinquency nei 2 anni successivi)
+
+```{r}
+barplot(table(y_train))
+```
+
+## RevolvingUtilizationOfUnsecuredLines ----------------------------------------------------------------
+
+Ratio of total balance on unsecured revolving credit lines to total available credit limits (Type: Percentage).
+This variable measures the proportion of available revolving credit that is currently being used by the borrower.
+
+$$
+\text{Revolving utilization} = \frac{\text{Outstanding revolving balance}}{\text{Total revolving credit limit}}
+$$
+
+where:
+
+Outstanding revolving balance: debito corrente su strumenti di credito revolving non garantiti (es. carte di credito, linee di credito personali).
+
+Total revolving credit limit: somma dei limiti massimi disponibili su tali strumenti.
+
+ovviamente più si avvicina ad 1 e più aumenta la probabilità di default (maggiore di 1 è molto rischioso poichè il saldo supera il limite teorico disponibile)
+
+
+```{r}
+plot(X_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
+```
+```{r}
+plot(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]), jitter(y_train))
+```
+
+c'è una nuvola di punti (che in relazione al numero totale di osservazioni è di piccola dimensione) con valori anomali
+
+```{r}
+boxplot(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]) ~ y_train)
+```
+
+rimuovo le osservazioni con RevolvingUtilizationOfUnsecuredLines > 100 (rimuovendo tali osservazioni sono migliorante anche le performance di un modello logistico frequentista classico sui due training set diversi (testati sullo stesso validation set), ROC-AUC da 0.76 a 0.8 e PR-AUC da 0.23 a 0.24)
+
+```{r}
+keep <- X_train[, "RevolvingUtilizationOfUnsecuredLines"] <= 100
+
+X_train <- X_train[keep, , drop = FALSE]
+y_train <- y_train[keep]
+```
+
+
+
+
+## age -------------------------------------------------------------------------------------------------
+
+Age of borrower in years (Type: Integer)
+
+```{r}
+boxplot(X_train[, "age"])
+```
+
+```{r}
+summary(X_train[, "age"])
+```
+
+```{r}
+table(X_train[, "age"] > 100)
+```
+
+```{r}
+
+#| eval: false 
+
+df <- data.frame(
+  x = X_train[, "age"],
+  y = y_train
+)
+
+df %>%
+  mutate(
+    x_log = log(x + 1),
+    bin = ntile(x_log, 20)
+  ) %>%
+  group_by(bin) %>%
+  summarise(
+    x_mean = mean(x_log),
+    default_rate = mean(y)
+  ) %>%
+  ggplot(aes(x_mean, default_rate)) +
+  geom_line() +
+  geom_point()
+
+```
+
+```{r}
+boxplot(
+  X_train$age ~ y_train,
+  names = c("No default", "Default"),
+  xlab = "Target",
+  ylab = "Age"
+)
+```
+
+
+## MonthlyIncome -----------------------------------------------------------------------------------
+
+```{r}
+summary(X_train[,"MonthlyIncome"])
+```
+
+```{r}
+plot(X_train[,"MonthlyIncome"], jitter(y_train))
+```
+
+```{r}
+hist(X_train[,"MonthlyIncome"][X_train[,"MonthlyIncome"] <= 30000], breaks=100)
+```
+
+
+
+numero di persone con montlhy income pari ad 1 (sono chiaramenti errori / replacement forzati)
+
+```{r}
+sum(X_train$MonthlyIncome== 1, na.rm = TRUE)
+```
+
+```{r}
+income <- X_train$MonthlyIncome
+
+summary(X_train$DebtRatio[income == 1])
+summary(X_train$DebtRatio[income > 1])
+```
+
+```{r}
+mean(y_train[income == 1], na.rm = TRUE)
+mean(y_train[income > 1], na.rm = TRUE)
+```
+
+Trasformo i monthly pari ad 1 in redditi mancanti e successivamente procederò tramite imputazioni
+
+```{r}
+# TRAIN
+X_train$MonthlyIncome[X_train$MonthlyIncome <= 10] <- NA
+
+# TRAIN
+X_train$MonthlyIncome[X_train$MonthlyIncome <= 10] <- NA
+
+# TEST
+X_test$MonthlyIncome[X_test$MonthlyIncome <= 10] <- NA
+```
+
+
+
+## DebtRatio ---------------------------------------------------------------------------------
+
+Monthly debt payments divided by monthly gross income (Type: Percentage)
+
+-   numeratore: pagamenti mensili debito
+-   denominatore: reddito mensile lordo
+
+valori maggiori a 0.5 sono ad alto rischio di default\
+valori maggiori di 1 sono molto preoccupati siccome la situazione è insostenibile nel lungo periodo
+
+
+```{r}
+summary(X_train[,"DebtRatio"])
+```
+
+```{r}
+plot(X_train[,"DebtRatio"], jitter(y_train))
+```
+
+```{r}
+hist(X_train[,"DebtRatio"][X_train[,"DebtRatio"] <= 1])
+```
+
+```{r}
+# X_train$DebtRatio <- pmin(X_train$DebtRatio, 5)
+# X_val$DebtRatio <- pmin(X_val$DebtRatio, 5)
+# X_test$DebtRatio <- pmin(X_test$DebtRatio, 5)
+```
+
+
+## NumberOfOpenCreditLinesAndLoans ------------------------------------------------------------------------------------------
+
+Number of open loans and credit lines (Type: Integer)
+
+è il numero totale di linee di credito e prestiti attualmente aperti. misura la complessità e l’ampiezza dell’esposizione creditizia del cliente.
+
+
+```{r}
+summary(X_train[,"NumberOfOpenCreditLinesAndLoans"])
+```
+
+```{r}
+plot(X_train[,"NumberOfOpenCreditLinesAndLoans"], jitter(y_train))
+```
+
+```{r}
+hist(X_train[,"NumberOfOpenCreditLinesAndLoans"], prob=T)
+```
+
+```{r}
+tapply(y_train, X_train$NumberOfOpenCreditLinesAndLoans > 20, mean)
+```
+
+```{r}
+tapply(y_train, cut(X_train$NumberOfOpenCreditLinesAndLoans, breaks = c(0,5,10,20,100)), mean)
+```
+
+
+## NumberRealEstateLoansOrLines -------------------------------------------------------------------------
+
+Number of real estate loans or credit lines (Type: Integer) Rappresenta il numero di prestiti o linee di credito legati a immobili
+
+```{r}
+summary(X_train[,"NumberRealEstateLoansOrLines"])
+```
+
+```{r}
+plot(X_train[,"NumberRealEstateLoansOrLines"], jitter(y_train))
+```
+
+
+
+## NumberOfDependents ---------------------------------------------------------------------------------
+
+Number of dependents excluding borrower (Type: Integer)
+
+Rappresenta il numero di persone a carico del cliente (escluso lui stesso). Tipicamente include figli e familiari senza reddito propri
+
+```{r}
+summary(X_train[,"NumberOfDependents"])
+```
+
+```{r}
+plot(X_train[,"NumberOfDependents"], jitter(y_train))
+```
+
+```{r}
+hist(X_train[,"NumberOfDependents"], prob=T)
+```
+
+
+## NumberOfTime30-59DaysPastDueNotWorse ----------------------------------------------------------------
+
+Times borrower was 30–59 days past due in the last 2 years (Type: Integer). Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo tra 30 e 59 giorni su un pagamento.
+
+## NumberOfTimes90DaysLate -----------------------------------------------------------------------------
+
+Times borrower was 90+ days past due (Type: Integer) Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo di 90 giorni o più su un pagamento.
+
+## NumberOfTime60-89DaysPastDueNotWorse -----------------------------------------------------------------
+
+Times borrower was 60–89 days past due in the last 2 years (Type: Integer).\
+Indica quante volte, negli ultimi 2 anni, il cliente è stato in ritardo tra 60 e 89 giorni su un pagamento.
+
+```{r}
+plot(X_train[,"NumberOfTime30_59DaysPastDueNotWorse"], jitter(y_train))
+```
+
+```{r}
+plot(X_train[,"NumberOfTimes90DaysLate"], jitter(y_train))
+```
+
+```{r}
+plot(X_train[,"NumberOfTime60_89DaysPastDueNotWorse"], jitter(y_train))
+```
+
+Sospetto che i valori 97 e 98 siano errori, anche se fossero stati registrati in periodi di crisi mi sembra strano cge non vi siano altri valori elevati (per esempio tra 10 e 90 o tra 90 e 98), penso quindi che possa essere un problema di encoding, probabilmente quei valori erano segnalati come "maggiore di 15" o qualcosa di simile.
+
+controlliamo se le 3 variabili "NumberOfTime30_59DaysPastDueNotWorse", "NumberOfTimes90DaysLate" e "NumberOfTime60_89DaysPastDueNotWorse" hanno lo stesso problema nelle stesse osservazioni
+
+```{r}
+dp1_ext <- X_train$NumberOfTime30_59DaysPastDueNotWorse >= 96
+dp2_ext <- X_train$NumberOfTime60_89DaysPastDueNotWorse >= 96
+dp3_ext <- X_train$NumberOfTimes90DaysLate >= 96
+
+all(dp1_ext == dp2_ext & dp2_ext == dp3_ext)
+```
+
+Aggiungo flag su questi valori
+
+```{r}
+# TRAIN
+dp_ext_train <- (
+  X_train$NumberOfTime30_59DaysPastDueNotWorse >= 90 |
+  X_train$NumberOfTime60_89DaysPastDueNotWorse >= 90 |
+  X_train$NumberOfTimes90DaysLate >= 90
+)
+
+X_train$dp_extreme <- as.integer(dp_ext_train)
+
+# VAL
+dp_ext_val <- (
+  X_val$NumberOfTime30_59DaysPastDueNotWorse >= 90 |
+  X_val$NumberOfTime60_89DaysPastDueNotWorse >= 90 |
+  X_val$NumberOfTimes90DaysLate >= 90
+)
+
+X_val$dp_extreme <- as.integer(dp_ext_val)
+
+# TEST
+dp_ext_test <- (
+  X_test$NumberOfTime30_59DaysPastDueNotWorse >= 90 |
+  X_test$NumberOfTime60_89DaysPastDueNotWorse >= 90 |
+  X_test$NumberOfTimes90DaysLate >= 90
+)
+
+X_test$dp_extreme <- as.integer(dp_ext_test)
+```
+
+imposto i valori come missing values (sia per train che per test)
+
+```{r}
+X_train$NumberOfTime30_59DaysPastDueNotWorse[
+  X_train$NumberOfTime30_59DaysPastDueNotWorse >= 90
+] <- NA
+
+X_train$NumberOfTime60_89DaysPastDueNotWorse[
+  X_train$NumberOfTime60_89DaysPastDueNotWorse >= 90
+] <- NA
+
+X_train$NumberOfTimes90DaysLate[
+  X_train$NumberOfTimes90DaysLate >= 90
+] <- NA
+```
+
+```{r}
+sum(is.na(X_train$NumberOfTime30_59DaysPastDueNotWorse))
+```
+
+```{r}
+X_val$NumberOfTime30_59DaysPastDueNotWorse[
+  X_val$NumberOfTime30_59DaysPastDueNotWorse >= 90
+] <- NA
+
+X_val$NumberOfTime60_89DaysPastDueNotWorse[
+  X_val$NumberOfTime60_89DaysPastDueNotWorse >= 90
+] <- NA
+
+X_val$NumberOfTimes90DaysLate[
+  X_val$NumberOfTimes90DaysLate >= 90
+] <- NA
+```
+
+```{r}
+X_test$NumberOfTime30_59DaysPastDueNotWorse[
+  X_test$NumberOfTime30_59DaysPastDueNotWorse >= 90
+] <- NA
+
+X_test$NumberOfTime60_89DaysPastDueNotWorse[
+  X_test$NumberOfTime60_89DaysPastDueNotWorse >= 90
+] <- NA
+
+X_test$NumberOfTimes90DaysLate[
+  X_test$NumberOfTimes90DaysLate >= 90
+] <- NA
+```
+
+
+#####################################################################################################
+######################################### Missing values ############################################
+#####################################################################################################
+
+
+
+```{r}
+# numero totale di na
+(sum(is.na(dat)))
+```
+
+```{r}
+# na per colonna
+(colSums(is.na(dat)))
+```
+
+```{r}
+# na per colonna (TRAIN set)
+(colSums(is.na(X_train)))
+
+```
+
+```{r}
+# percentuale di na per colonna
+(colMeans(is.na(dat)) * 100)
+```
+
+Il problema più grande è chiaramente la variabile "MonthlyIncome" con circa il 20% di valori mancanti.
+Il sospetto è che questi siano effettivamente dei valori MNAR (Missing Not At Random) per esempio la non presenza del reddito mensile potrebbe indicare le persone che non hanno lavoro.
+
+Il notebook https://www.kaggle.com/code/regivm/data-cleaning-and-eda-tutorial di kaggle presenta un estensivo trattamento dei valori mancanti, per l'obiettivo di questo progetto mi limiterò ad eseguire imputazioni di base.
+
+
+# NumberOfDependents  -----------------------------------------------------------------------------------------------------------------
+
+
+```{r}
+# TRAIN 
+X_train$DependentsMissing <- as.integer(is.na(X_train$NumberOfDependents))
+X_train$NumberOfDependents[is.na(X_train$NumberOfDependents)] <- 0 # essendo 0 la mediana
+
+# VAL
+X_val$DependentsMissing <- as.integer(is.na(X_val$NumberOfDependents))
+X_val$NumberOfDependents[is.na(X_val$NumberOfDependents)] <- 0 
+
+# TEST
+X_test$DependentsMissing <- as.integer(is.na(X_test$NumberOfDependents))
+X_test$NumberOfDependents[is.na(X_test$NumberOfDependents)] <- 0
+```
+
+
+# MonthlyIncome -------------------------------------------------------------------------------------------------------
+
+```{r}
+# aggiungo flag ai missing (monthlyincome)
+
+X_train$IncomeMissing = as.integer(is.na(X_train$MonthlyIncome))
+X_val$IncomeMissing = as.integer(is.na(X_val$MonthlyIncome))
+X_test$IncomeMissing = as.integer(is.na(X_test$MonthlyIncome))
+```
+
+# MICE/PMM imputation
+
+```{r}
+set.seed(123)
+
+# 1. Combino gli split e identifico la provenienza di ogni riga
+n_train <- nrow(X_train)
+n_val   <- nrow(X_val)
+n_test  <- nrow(X_test)
+
+train_data <- as.data.frame(X_train)
+val_data   <- as.data.frame(X_val)
+test_data  <- as.data.frame(X_test)
+
+stopifnot(
+  identical(names(train_data), names(val_data)),
+  identical(names(train_data), names(test_data))
+)
+
+combined <- rbind(train_data, val_data, test_data)
+
+# TRUE per validation e test: queste righe non stimano
+# i modelli d'imputazione
+ignore_rows <- c(
+  rep(FALSE, n_train),
+  rep(TRUE, n_val + n_test)
+)
+
+# 2. Definisco metodi e matrice dei predittori
+meth <- mice::make.method(combined)
+pred <- mice::make.predictorMatrix(combined)
+
+# PMM per tutte le variabili numeriche con missing
+numeric_cols <- names(combined)[
+  vapply(combined, is.numeric, logical(1))
+]
+
+meth[numeric_cols] <- "pmm"
+
+# Le variabili senza missing non devono essere imputate
+meth[colSums(is.na(combined)) == 0] <- ""
+
+# Indicatori di missingness: li mantengo, ma non li uso
+# come predittori e non li imputo
+flag_cols <- intersect(
+  c("IncomeMissing", "DependentsMissing", "dp_extreme"),
+  names(combined)
+)
+
+meth[flag_cols] <- ""
+pred[, flag_cols] <- 0
+
+# Se esiste una colonna ID, non la uso come predittore
+id_cols <- intersect(c("X", "ID", "Id"), names(combined))
+
+pred[, id_cols] <- 0
+meth[id_cols] <- ""
+
+# 3. Stimo MICE usando solo le righe del training
+imp <- mice::mice(
+  combined,
+  m = 1,
+  maxit = 10,
+  method = meth,
+  predictorMatrix = pred,
+  ignore = ignore_rows,
+  printFlag = FALSE,
+  seed = 123
+)
+
+# 4. Recupero il dataset completato
+completed <- mice::complete(imp, 1)
+
+# 5. Ricostruisco i tre split
+X_train_imp <- completed[seq_len(n_train), , drop = FALSE]
+
+val_idx <- n_train + seq_len(n_val)
+X_val_imp <- completed[val_idx, , drop = FALSE]
+
+test_idx <- n_train + n_val + seq_len(n_test)
+X_test_imp <- completed[test_idx, , drop = FALSE]
+
+# 6. Verifiche
+cat("NA residui nel train:", sum(is.na(X_train_imp)), "\n")
+cat("NA residui nella validation:", sum(is.na(X_val_imp)), "\n")
+cat("NA residui nel test:", sum(is.na(X_test_imp)), "\n")
+
+summary(X_train_imp$MonthlyIncome)
+```
+
+```{r}
+# NA residui
+colSums(is.na(X_train_imp))
+colSums(is.na(X_val_imp))
+colSums(is.na(X_test_imp))
+
+# Distribuzione del reddito prima e dopo
+summary(X_train$MonthlyIncome)
+summary(X_train_imp$MonthlyIncome)
+```
+
+
+#####################################################################################################
+######################################### Outliers ##################################################
+#####################################################################################################
+
+# fitto un logistico preliminare e lo "diagnostico"
+
+```{r}
+df_train = X_train_imp
+df_train$y = y_train
+```
+
+```{r}
+with(df_train, table(dp_extreme, y))
+```
+
+```{r}
+glm1 = glm(y ~ ., data = df_train, family = binomial(link = "logit"))
+summary(glm1)
+```
+
+```{r}
+# probabilità stimate
+p_hat <- fitted(glm1)
+```
+
+
+### Residui di pearson e di Devianza
+
+```{r}
+r_pearson  <- residuals(glm1, type = "pearson")
+r_deviance <- residuals(glm1, type = "deviance")
+
+par(mfrow = c(1, 2))
+
+plot(p_hat, r_pearson,
+     xlab = "Probabilità stimata",
+     ylab = "Residui di Pearson",
+     main = "Pearson residuals",
+     pch = 16, cex = 0.35)
+abline(h = c(-3, 0, 3), lty = c(2, 1, 2))
+
+plot(p_hat, r_deviance,
+     xlab = "Probabilità stimata",
+     ylab = "Residui di devianza",
+     main = "Deviance residuals",
+     pch = 16, cex = 0.35)
+abline(h = c(-3, 0, 3), lty = c(2, 1, 2))
+
+par(mfrow = c(1, 1))
+```
+
+c'è un residuo di pearson di valore -60 milioni e qualche residuo di devianza con valori superiori a 3 in valore assoluto
+
+```{r}
+which(abs(r_deviance) > 3)
+```
+
+```{r}
+which(abs(r_pearson) > 10000000)
+```
+
+### Leverage
+
+```{r}
+h <- hatvalues(glm1)
+
+n <- nobs(glm1)
+p <- length(coef(glm1))
+
+# Soglia
+lev_cut <- 2 * p / n
+sum(h > lev_cut)
+
+head(
+  order(h, decreasing = TRUE),
+  20
+)
+```
+
+### Cook's distance
+
+```{r}
+cook <- cooks.distance(glm1)
+
+plot(cook,
+     type = "h",
+     main = "Cook's distance",
+     xlab = "Indice osservazione",
+     ylab = "Cook's distance")
+
+abline(h = 4 / n, col = "red", lty = 2)
+
+# osservazioni più influenti
+idx_cook <- order(cook, decreasing = TRUE)[1:20]
+
+data.frame(
+  row = idx_cook,
+  cooks_distance = cook[idx_cook],
+  leverage = h[idx_cook],
+  deviance_residual = r_deviance[idx_cook]
+)
+```
+
+### DFBETAS
+
+```{r}
+dfb <- dfbetas(glm1)
+
+dim(dfb)
+colnames(dfb)
+
+# Soglia
+dfb_cut <- 2 / sqrt(n)
+
+# numero osservazioni sopra la soglia per coefficiente
+colSums(abs(dfb) > dfb_cut)
+
+# Oss più influenti per ciascun coefficiente
+top_dfb <- lapply(seq_len(ncol(dfb)), function(j) {
+  idx <- order(abs(dfb[, j]), decreasing = TRUE)[1:10]
+
+  data.frame(
+    observation = idx,
+    coefficient = colnames(dfb)[j],
+    dfbetas = dfb[idx, j]
+  )
+})
+
+names(top_dfb) <- colnames(dfb)
+
+# Esempio
+top_dfb$DebtRatio
+```
+
+### DFFITS
+
+```{r}
+dff <- dffits(glm1)
+
+dff_cut <- 2 * sqrt(p / n)
+
+sum(abs(dff) > dff_cut)
+
+idx_dff <- order(abs(dff), decreasing = TRUE)[1:20]
+
+data.frame(
+  row = idx_dff,
+  dffits = dff[idx_dff],
+  fitted_probability = p_hat[idx_dff],
+  leverage = h[idx_dff],
+  cooks_distance = cook[idx_dff]
+)
+```
+
+recap osservazioni da attenzionare
+
+```{r}
+diagnostics <- data.frame(
+  row = seq_len(n),
+  y = model.response(model.frame(glm1)),
+  fitted = p_hat,
+  pearson = r_pearson,
+  deviance = r_deviance,
+  leverage = h,
+  cooks = cook,
+  dffits = dff
+)
+
+diagnostics$flag_residual <- abs(diagnostics$deviance) > 3
+diagnostics$flag_leverage <- diagnostics$leverage > lev_cut
+diagnostics$flag_cook <- diagnostics$cooks > 4 / n
+diagnostics$flag_dffits <- abs(diagnostics$dffits) > dff_cut
+
+diagnostics$n_flags <- rowSums(
+  diagnostics[, c(
+    "flag_residual", "flag_leverage",
+    "flag_cook", "flag_dffits"
+  )]
+)
+
+diagnostics <- diagnostics[
+  order(diagnostics$n_flags, decreasing = TRUE),
+]
+
+head(diagnostics, 30)
+```
+
+### probabilità estreme
+
+ci sono inoltre delle osservazioni che hanno probabilità estreme
+
+```{r}
+sum(p_hat < 1e-8)
+sum(p_hat > 1 - 1e-8)
+```
+
+```{r}
+# Osservazioni con probabilità estreme
+idx_extreme <- which(p_hat < 1e-8 | p_hat > 1 - 1e-8)
+
+head(
+  data.frame(
+    row = idx_extreme,
+    y = model.response(model.frame(glm1))[idx_extreme],
+    fitted = p_hat[idx_extreme],
+    r_deviance = r_deviance[idx_extreme],
+    leverage = h[idx_extreme]
+  ),
+  20
+)
+```
+
+
+#####################################################################################################
+################################### variable transformation #########################################
+#####################################################################################################
+
+
+
+# Trasformazione Box–Tidwell
+
+# Monthly Income --------------------------------------------------------------------------------------
+
+```{r}
+plot(df_train[,"MonthlyIncome"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"MonthlyIncome"], breaks=100)
+```
+
+```{r}
+plot(log(X_test_imp[,"MonthlyIncome"]), jitter(y_test))
+```
+
+```{r}
+hist(log(X_test_imp[,"MonthlyIncome"]), breaks=100)
+```
+
+```{r}
+# X_train[,"logMonthlyIncome"] = log(X_train[,"MonthlyIncome"])
+# X_test[,"logMonthlyIncome"] = log(X_test[,"MonthlyIncome"])
+```
+
+```{r}
+# Monthly Income
+df_train$MonthlyIncome_logterm = df_train$MonthlyIncome * log(df_train$MonthlyIncome)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+
+
+
+
+# RevolvingUtilizationOfUnsecuredLines ------------------------------------------------------------------------------------
+
+```{r}
+# X_train$RevolvingUtilization_log <- 
+  #log1p(X_train$RevolvingUtilizationOfUnsecuredLines)
+
+# X_test$RevolvingUtilization_log <- 
+  #log1p(X_test$RevolvingUtilizationOfUnsecuredLines)
+```
+
+```{r}
+# X_train$RevolvingUtilizationOfUnsecuredLines <- NULL
+#X_test$RevolvingUtilizationOfUnsecuredLines <- NULL
+```
+
+```{r}
+plot(df_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
+```
+
+```{r}
+hist(log1p(df_train[,"RevolvingUtilizationOfUnsecuredLines"]), breaks=100)
+```
+
+
+```{r}
+df_train$RUOUL_logterm = df_train$RevolvingUtilizationOfUnsecuredLines * log1p(df_train$RevolvingUtilizationOfUnsecuredLines)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+```{r}
+df_train$RUOUL_logterm = NULL
+```
+
+
+
+# Age ------------------------------------------------------------------------------------------------
+
+```{r}
+df_train$AgeSquared <- X_train$age^2
+X_val$AgeSquared = X_val$age^2
+X_test$AgeSquared <- X_test$age^2
+```
+
+ha senso aggiungere age^2?
+
+```{r}
+model_linear <- glm(y_train ~ age, data = X_train, family = binomial)
+model_quad   <- glm(y_train ~ age + AgeSquared, data = df_train, family = binomial)
+
+cat("AIC modello lineare:", AIC(model_linear), "\n")
+cat("AIC modello quadratico:", AIC(model_quad), "\n\n")
+
+print(anova(model_linear, model_quad, test = "Chisq"))
+```
+
+
+
+
+# Dept ratio ------------------------------------------------------------------------------------------
+
+```{r}
+plot(df_train[,"DebtRatio"], jitter(y_train))
+```
+
+```{r}
+hist(log(df_train[,"DebtRatio"]), breaks=100)
+```
+
+```{r}
+plot(X_test_imp[,"DebtRatio"], jitter(y_test))
+```
+
+```{r}
+hist(X_test_imp[,"DebtRatio"], breaks=100)
+```
+
+
+
+
+```{r}
+# X_train$logDebtRatio <- log1p(X_train$DebtRatio)
+# X_test$logDebtRatio <- log1p(X_test$DebtRatio)
+
+# X_train$DebtRatio <- NULL
+# X_test$DebtRatio <- NULL
+```
+
+
+```{r}
+df_train$DebtRatio_logterm = df_train$DebtRatio * log1p(df_train$DebtRatio)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+
+
+
+
+
+
+# NumberOfOpenCreditLinesAndLoans ------------------------------------------------------------------------------------------
+
+```{r}
+plot(df_train[,"NumberOfOpenCreditLinesAndLoans"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"NumberOfOpenCreditLinesAndLoans"])
+```
+
+```{r}
+hist(log1p(df_train[,"NumberOfOpenCreditLinesAndLoans"]), breaks=100)
+```
+
+
+```{r}
+df_train$CreditLines_logterm = df_train$NumberOfOpenCreditLinesAndLoans * log1p(df_train$NumberOfOpenCreditLinesAndLoans)
+
+glm_bt <- glm(
+  y ~ .,
+  data = df_train,
+  family = binomial(link = "logit")
+)
+
+summary(glm_bt)
+```
+
+
+```{r}
+# Test del termine non lineare
+anova(glm1, glm_bt, test = "LRT")
+
+# Confronto AIC e BIC
+AIC(glm1, glm_bt)
+BIC(glm1, glm_bt)
+```
+
+
+
+```{r}
+# TRAIN
+# X_train$CreditLines_log <- log1p(
+  # X_train$NumberOfOpenCreditLinesAndLoans)
+
+# TEST
+# X_test$CreditLines_log <- log1p(
+  # X_test$NumberOfOpenCreditLinesAndLoans)
+
+# X_train$NumberOfOpenCreditLinesAndLoans <- NULL
+# X_test$NumberOfOpenCreditLinesAndLoans <- NULL
+```
+
+
+# NumberRealEstateLoansOrLines ------------------------------------------------------------------------------------------
+
+```{r}
+plot(df_train[,"NumberRealEstateLoansOrLines"], jitter(y_train))
+```
+
+```{r}
+hist(df_train[,"NumberRealEstateLoansOrLines"])
+```
+
+```{r}
+hist(log1p(df_train[,"NumberRealEstateLoansOrLines"]), breaks=100)
+```
+
+
+
+Inserisco un flag per che separa chi ha un mutuo da chi non lo ha (senza guardare il numero di mutui)
+
+
+```{r}
+# TRAIN
+X_train$HasRealEstateLoan <- as.integer(
+  X_train$NumberRealEstateLoansOrLines > 0
+)
+
+# TEST
+X_test$HasRealEstateLoan <- as.integer(
+  X_test$NumberRealEstateLoansOrLines > 0
+)
+
+# X_train$NumberRealEstateLoansOrLines <- NULL
+# X_test$NumberRealEstateLoansOrLines <- NULL
+```
+
+
+
+
+#####################################################################################################
+#################################### collinearity diagnosis #########################################
+#####################################################################################################
+
+
+### COR
+
+```{r}
+# flags
+cat(mean(df_train$dp_extreme == df_train$DependentsMissing),  "\n")
+cat(mean(df_train$IncomeMissing == df_train$DependentsMissing), "\n")
+cat(mean(df_train$IncomeMissing == df_train$dp_extreme), "\n")
+```
+
+### VIF
+
+
+### CI & CN
+
+
+### VDP
+
+
+
+
+
+#####################################################################################################
+############################################## Scaling ##############################################
+#####################################################################################################
+
+
+```{r}
+apply(X_train, 2, mean)
+```
+
+```{r}
+apply(X_train, 2, var)
+```
+
+Selezioniamo solo variabili continue / count
+
+```{r}
+cols_to_scale <- setdiff(colnames(X_train), c(
+  "dp_extreme",
+  "IncomeMissing",
+  "DependentsMissing"
+))
+```
+
+calcoliamo i parametri sul TRAIN (non voglio leakage)
+
+```{r}
+means <- colMeans(X_train[, cols_to_scale])
+sds   <- apply(X_train[, cols_to_scale], 2, sd)
+```
+
+scaliamo i TRAIN
+
+```{r}
+X_train[, cols_to_scale] <- scale(X_train[, cols_to_scale], 
+                                 center = means, 
+                                 scale = sds)
+```
+
+scala i dati TEST con GLI STESSI parametri
+
+```{r}
+X_test[, cols_to_scale] <- scale(X_test[, cols_to_scale], 
+                                center = means, 
+                                scale = sds)
+```
+
+
+
+
+#####################################################################################################
+########################################## Saving data ##############################################
+#####################################################################################################
+
+
+```{r}
+#| eval: false 
+
+saveRDS(X_train, "data/processed/X_train.rds")
+saveRDS(X_test, "data/processed/X_test.rds")
+saveRDS(y_train, "data/processed/y_train.rds")
+saveRDS(y_test, "data/processed/y_test.rds")
+
+saveRDS(means, "data/processed/means.rds")
+saveRDS(sds, "data/processed/sds.rds")
+```

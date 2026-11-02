@@ -35,11 +35,8 @@ df_test <- as.data.frame(X_test)
 df_test$y <- y_test
 
 fit_frequentist <- glm(y ~ ., data = df_train, family = binomial(link = "logit"))
-
-# Summary dei coefficienti e p-values
 summary(fit_frequentist)
 ```
-
 
 # diagnostica delle osservazioni ---------------------------------------------------------------------
 
@@ -134,17 +131,10 @@ c(LR = LR, df = df_LR, p_value = p_LR)
 ### X^2 Pearson
 
 ```{r}
-X2_Pearson <- sum(
-  residuals(glm1, type = "pearson")^2
-)
-
+X2_Pearson <- sum(residuals(glm1, type = "pearson")^2)
 df_Pearson <- df.residual(glm1)
 
-p_Pearson <- pchisq(
-  X2_Pearson,
-  df = df_Pearson,
-  lower.tail = FALSE
-)
+p_Pearson <- pchisq(X2_Pearson,df = df_Pearson,lower.tail = FALSE)
 
 c(
   Pearson_X2 = X2_Pearson,

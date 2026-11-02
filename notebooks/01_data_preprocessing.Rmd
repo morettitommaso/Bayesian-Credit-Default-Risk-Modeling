@@ -134,8 +134,10 @@ Person experienced 90 days past due delinquency or worse. (Type: Y/N) Indica se 
 1 : evento avvenuto 0 : evento non avvenuto (Nessuna grave delinquency nei 2 anni successivi)
 
 ```{r}
-barplot(table(y_train))
+table(y_train)
 ```
+
+verrà chiaramente usata come variabile risposta nella nostra analisi.
 
 ## RevolvingUtilizationOfUnsecuredLines ----------------------------------------------------------------
 
@@ -160,6 +162,55 @@ plot(X_train[,"RevolvingUtilizationOfUnsecuredLines"], jitter(y_train))
 ```
 ```{r}
 plot(log1p(X_train[,"RevolvingUtilizationOfUnsecuredLines"]), jitter(y_train))
+```
+
+```{r}
+boxplot(
+  X_train[, "RevolvingUtilizationOfUnsecuredLines"] ~ y_train,
+  names = c("Y = 0", "Y = 1"),
+  xlab = "Classe",
+  ylab = "Revolving Utilization",
+  main = "Distribuzione per classe"
+)
+```
+
+```{r}
+boxplot(
+  log1p(X_train[, "RevolvingUtilizationOfUnsecuredLines"]) ~ y_train,
+  names = c("Y = 0", "Y = 1"),
+  xlab = "Classe",
+  ylab = "log(1 + Revolving Utilization)",
+  main = "Distribuzione per classe"
+)
+```
+
+```{r}
+x <- log1p(X_train[, "RevolvingUtilizationOfUnsecuredLines"])
+
+hist(
+  x[y_train == 0 & x <= 1],
+  breaks = seq(0, 1, length.out = 51),
+  freq = FALSE,
+  col = rgb(0, 0, 1, 0.35),
+  xlim = c(0, 1),
+  ylim = c(0, 6),  # da adattare
+  main = "Distribuzione di X per classe",
+  xlab = "log(1 + Revolving Utilization)"
+)
+
+hist(
+  x[y_train == 1 & x <= 1],
+  breaks = seq(0, 1, length.out = 51),
+  freq = FALSE,
+  col = rgb(1, 0, 0, 0.35),
+  add = TRUE
+)
+
+legend(
+  "topright",
+  legend = c("Y = 0", "Y = 1"),
+  fill = c(rgb(0, 0, 1, 0.35), rgb(1, 0, 0, 0.35))
+)
 ```
 
 c'è una nuvola di punti (che in relazione al numero totale di osservazioni è di piccola dimensione) con valori anomali
@@ -193,32 +244,7 @@ summary(X_train[, "age"])
 ```
 
 ```{r}
-table(X_train[, "age"] > 100)
-```
-
-```{r}
-
-#| eval: false 
-
-df <- data.frame(
-  x = X_train[, "age"],
-  y = y_train
-)
-
-df %>%
-  mutate(
-    x_log = log(x + 1),
-    bin = ntile(x_log, 20)
-  ) %>%
-  group_by(bin) %>%
-  summarise(
-    x_mean = mean(x_log),
-    default_rate = mean(y)
-  ) %>%
-  ggplot(aes(x_mean, default_rate)) +
-  geom_line() +
-  geom_point()
-
+sum(X_train[, "age"] > 100)
 ```
 
 ```{r}
@@ -228,6 +254,43 @@ boxplot(
   xlab = "Target",
   ylab = "Age"
 )
+```
+
+```{r}
+png("figures/expl_variables/distribuzione_age.png", width = 1200, height = 800, res = 150)
+
+x <- X_train$age
+
+h0 <- hist(x[y_train == 0], breaks = 50, freq = FALSE, plot = FALSE)
+h1 <- hist(x[y_train == 1], breaks = 50, freq = FALSE, plot = FALSE)
+
+ymax <- max(h0$density, h1$density)
+
+hist(
+  x[y_train == 0],
+  breaks = 50,
+  freq = FALSE,
+  col = rgb(0, 0, 1, 0.35),
+  ylim = c(0, ymax * 1.15),
+  main = "AGE",
+  xlab = "Age"
+)
+
+hist(
+  x[y_train == 1],
+  breaks = 50,
+  freq = FALSE,
+  col = rgb(1, 0, 0, 0.35),
+  add = TRUE
+)
+
+legend(
+  "topright",
+  legend = c("No default", "Default"),
+  fill = c(rgb(0, 0, 1, 0.35), rgb(1, 0, 0, 0.35))
+)
+
+dev.off()
 ```
 
 
